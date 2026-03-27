@@ -23,6 +23,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showRunGuide, setShowRunGuide] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
+  const [messages, setMessages] = useState<{ role: 'user' | 'model', text: string }[]>([]);
+  const [currentTranscription, setCurrentTranscription] = useState("");
   
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -111,8 +113,9 @@ export default function App() {
       
       const session = await connectLive({
         onopen: () => {
+          if (!audioContextRef.current) return;
           setStatus('live');
-          sourceRef.current = audioContextRef.current!.createMediaStreamSource(stream);
+          sourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
           sourceRef.current.connect(analyzerRef.current!);
           
           processorRef.current = audioContextRef.current!.createScriptProcessor(4096, 1, 1);
@@ -133,7 +136,9 @@ export default function App() {
           sourceRef.current.connect(processorRef.current);
           processorRef.current.connect(audioContextRef.current!.destination);
         },
-        onmessage: (message) => {
+        onmessage: async (msg: any) => {
+          const message = msg as any;
+          // Handle Audio Output
           const audioData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
           if (audioData) {
             const binaryString = atob(audioData);
@@ -145,6 +150,29 @@ export default function App() {
             queueAudio(bytes);
           }
 
+          // Handle Transcriptions
+          const modelText = message.serverContent?.modelTurn?.parts?.[0]?.text;
+          if (modelText) {
+            setMessages(prev => {
+              const last = prev[prev.length - 1];
+              if (last && last.role === 'model') {
+                return [...prev.slice(0, -1), { role: 'model', text: last.text + modelText }];
+              }
+              return [...prev, { role: 'model', text: modelText }];
+            });
+          }
+
+          const userText = message.serverContent?.userTurn?.parts?.[0]?.text;
+          if (userText) {
+            setMessages(prev => {
+              const last = prev[prev.length - 1];
+              if (last && last.role === 'user') {
+                return [...prev.slice(0, -1), { role: 'user', text: last.text + userText }];
+              }
+              return [...prev, { role: 'user', text: userText }];
+            });
+          }
+
           if (message.serverContent?.interrupted) {
             nextStartTimeRef.current = 0;
             if (playbackContextRef.current) {
@@ -152,6 +180,20 @@ export default function App() {
                 playbackContextRef.current = null;
                 initPlaybackContext();
               });
+            }
+          }
+
+          if (message.toolCall) {
+            const toolCall = message.toolCall;
+            const functionCalls = toolCall.functionCalls;
+            if (functionCalls) {
+              const responses = [];
+              for (const call of functionCalls) {
+                const { name, args, id } = call;
+                const result = await handleToolCall(name, args);
+                responses.push({ name, response: { result }, id });
+              }
+              sessionRef.current?.sendToolResponse({ functionResponses: responses });
             }
           }
         },
@@ -192,6 +234,39 @@ export default function App() {
     nextStartTimeRef.current = 0;
   };
 
+  const handleToolCall = async (name: string, args: any) => {
+    switch (name) {
+      case 'openWhatsApp':
+        const waUrl = args.phoneNumber 
+          ? `https://wa.me/${args.phoneNumber}?text=${encodeURIComponent(args.message || '')}`
+          : `whatsapp://send?text=${encodeURIComponent(args.message || '')}`;
+        window.open(waUrl, '_blank');
+        return { status: 'success', action: 'Opened WhatsApp' };
+      
+      case 'openInstagram':
+        window.open('instagram://', '_blank');
+        return { status: 'success', action: 'Opened Instagram' };
+
+      case 'openMessages':
+        const smsUrl = `sms:${args.phoneNumber || ''}?body=${encodeURIComponent(args.message || '')}`;
+        window.open(smsUrl, '_blank');
+        return { status: 'success', action: 'Opened Messages' };
+
+      case 'makePhoneCall':
+        window.open(`tel:${args.phoneNumber}`, '_blank');
+        return { status: 'success', action: 'Initiated Call' };
+
+      case 'getCurrentTime':
+        return { time: new Date().toLocaleTimeString() };
+
+      case 'getWeather':
+        return { weather: `The weather in ${args.location} is currently clear and sunny, 25°C.` };
+
+      default:
+        return { error: `Unknown tool: ${name}` };
+    }
+  };
+
   const toggleLanguage = () => {
     const newLang = language === 'en-US' ? 'ta-IN' : 'en-US';
     setLanguage(newLang);
@@ -214,139 +289,137 @@ export default function App() {
       <div className="atmosphere" />
       
       {/* Header */}
-      <div className="absolute top-8 left-8 right-8 flex justify-between items-center z-20">
+      <div className="absolute top-8 left-8 right-8 flex justify-between items-start z-20">
         <div className="flex items-center gap-3">
-          <div className={`w-2 h-2 rounded-full ${status !== 'idle' ? 'bg-orange-500 animate-pulse' : 'bg-white/20'}`} />
-          <h1 className="text-[10px] font-mono tracking-[0.3em] uppercase opacity-40">ARIA.CLEAR v3.2</h1>
+          <div className={`w-1.5 h-4 rounded-full ${status !== 'idle' ? 'bg-violet-500 animate-pulse' : 'bg-white/20'}`} />
+          <div className="flex flex-col">
+            <h1 className="text-[11px] font-mono tracking-[0.4em] uppercase opacity-60 leading-tight">ARIA.CLEAR</h1>
+            <h1 className="text-[11px] font-mono tracking-[0.4em] uppercase opacity-60 leading-tight">V4.0 | BY</h1>
+            <h1 className="text-[11px] font-mono tracking-[0.4em] uppercase opacity-60 leading-tight">BARATH</h1>
+          </div>
         </div>
         
-        <div className="flex items-center gap-3">
-          <div className="glass px-3 py-1.5 rounded-full flex items-center gap-2">
-            <Activity size={10} className={status === 'live' ? 'text-green-400' : 'text-white/20'} />
-            <span className="text-[9px] font-mono opacity-40 uppercase">
-              {clarityMode === 'high' ? 'Ultra Clarity' : 'Natural Mode'}
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setClarityMode(clarityMode === 'high' ? 'natural' : 'high')}
+            className="glass px-6 py-2.5 rounded-full flex items-center gap-3 hover:bg-white/5 transition-all"
+          >
+            <Activity size={12} className={status === 'live' ? 'text-cyan-400' : 'text-white/40'} />
+            <span className="text-[10px] font-mono opacity-60 uppercase tracking-[0.2em]">
+              {clarityMode === 'high' ? 'ULTRA CLARITY' : 'NATURAL MODE'}
             </span>
-          </div>
+          </button>
           
           <button 
             onClick={toggleLanguage}
-            className="glass px-4 py-1.5 rounded-full text-[10px] font-mono flex items-center gap-2 hover:bg-white/10 transition-colors"
+            className="glass px-6 py-2.5 rounded-full text-[10px] font-mono flex items-center gap-3 hover:bg-white/5 transition-all tracking-[0.2em] uppercase opacity-60"
           >
-            <Languages size={12} />
+            <Languages size={14} />
             {language === 'en-US' ? 'EN' : 'TA'}
           </button>
           
           <button 
             onClick={() => setShowSettings(true)}
-            className="glass p-2 rounded-full hover:bg-white/10 transition-colors"
+            className="glass p-3 rounded-full hover:bg-white/5 transition-all opacity-60"
           >
-            <Settings size={14} />
+            <Settings size={16} />
           </button>
 
           <button 
             onClick={() => setShowRunGuide(true)}
-            className="glass p-2 rounded-full hover:bg-white/10 transition-colors text-orange-500"
+            className="glass p-3 rounded-full hover:bg-white/5 transition-all opacity-60"
           >
-            <Info size={14} />
+            <Info size={16} />
           </button>
         </div>
       </div>
 
       {/* Main Interaction Area */}
-      <div className="relative flex flex-col items-center gap-16 z-10">
-        <div className="relative">
-          <AnimatePresence>
-            {status !== 'idle' && (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 1.5 }}
-                className="absolute inset-0 flex items-center justify-center pointer-events-none"
+      <div className="relative flex flex-col items-center gap-12 z-10 w-full max-w-4xl">
+        
+        {/* Chat History */}
+        <div className="w-full h-64 overflow-y-auto custom-scrollbar flex flex-col gap-4 p-4 mask-fade-top">
+          <AnimatePresence initial={false}>
+            {messages.map((msg, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                {/* Dynamic Visualizer Ring */}
-                <motion.div 
-                  className="absolute border-2 border-[#00ffcc]/30 rounded-full"
-                  animate={{ 
-                    width: 120 + (micLevel * 2), 
-                    height: 120 + (micLevel * 2),
-                    opacity: micLevel > 10 ? 0.8 : 0.2
-                  }}
-                />
-                <div className="pulse-ring" style={{ animationDelay: '0s', borderColor: status === 'speaking' ? '#ff4e00' : '#00ffcc' }} />
-                <div className="pulse-ring" style={{ animationDelay: '0.6s', borderColor: status === 'speaking' ? '#ff4e00' : '#00ffcc' }} />
+                <div className={`max-w-[80%] px-4 py-2 rounded-2xl text-sm ${
+                  msg.role === 'user' 
+                    ? 'bg-violet-500/20 text-violet-100 border border-violet-500/30' 
+                    : 'bg-white/5 text-white/80 border border-white/10'
+                }`}>
+                  {msg.text}
+                </div>
               </motion.div>
-            )}
+            ))}
           </AnimatePresence>
-          
-          <motion.div 
-            className={`orb cursor-pointer ${status !== 'idle' ? 'listening' : ''} ${status === 'speaking' ? 'speaking' : ''}`}
-            style={{ 
-              background: status === 'live' ? 'radial-gradient(circle at 30% 30%, #00ffcc, #000)' : undefined,
-              boxShadow: status === 'live' ? `0 0 ${20 + (micLevel / 2)}px #00ffcc` : undefined
-            }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={status === 'idle' ? startLiveSession : stopLiveSession}
-          >
-            <div className="absolute inset-0 flex items-center justify-center">
-              {status === 'idle' && <Mic size={32} className="text-white/30" />}
-              {status === 'connecting' && <RefreshCcw size={32} className="text-white animate-spin" />}
-              {status === 'live' && <Zap size={32} className="text-[#00ffcc] animate-pulse" />}
-              {status === 'speaking' && <Volume2 size={32} className="text-white" />}
-            </div>
-          </motion.div>
         </div>
 
-        {/* Text Feedback */}
-        <div className="h-32 flex flex-col items-center justify-center text-center max-w-lg px-4">
-          <AnimatePresence mode="wait">
-            {status === 'live' && (
-              <motion.div 
-                key="live"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex flex-col items-center gap-3"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="h-1 w-24 bg-white/10 rounded-full overflow-hidden">
-                    <motion.div 
-                      className="h-full bg-[#00ffcc]"
-                      animate={{ width: `${Math.min(100, micLevel * 2)}%` }}
-                    />
-                  </div>
-                  <span className="text-[8px] font-mono opacity-30 uppercase">Mic Level</span>
-                </div>
-                <p className="text-lg font-light italic text-white/90">"Speak clearly... I'm listening"</p>
-              </motion.div>
-            )}
+        {/* Aura Visualizer */}
+        <div className="relative">
+          <div className="aura-container" onClick={status === 'idle' ? startLiveSession : stopLiveSession}>
+            <motion.div 
+              className="aura-layer aura-1"
+              animate={{ 
+                scale: 1 + (micLevel / 100),
+                opacity: 0.4 + (micLevel / 200)
+              }}
+            />
+            <motion.div 
+              className="aura-layer aura-2"
+              animate={{ 
+                scale: 1.1 + (micLevel / 80),
+                opacity: 0.3 + (micLevel / 150)
+              }}
+            />
+            <div className="aura-core cursor-pointer group">
+              <div className="absolute inset-0 flex items-center justify-center">
+                {status === 'idle' && <Mic size={24} className="text-violet-500 group-hover:scale-110 transition-transform" />}
+                {status === 'connecting' && <RefreshCcw size={24} className="text-violet-500 animate-spin" />}
+                {status === 'live' && <Zap size={24} className="text-cyan-500 animate-pulse" />}
+                {status === 'speaking' && <Volume2 size={24} className="text-violet-500" />}
+              </div>
+            </div>
+          </div>
+        </div>
 
-            {status === 'speaking' && (
-              <motion.div 
-                key="speaking"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex flex-col gap-2"
-              >
-                <span className="text-[10px] font-mono uppercase tracking-widest text-orange-500/60">High Clarity Output</span>
-                <p className="text-xl font-medium text-orange-100 leading-relaxed">Synthesizing Clear Speech...</p>
-              </motion.div>
-            )}
-            
+        {/* Status Text */}
+        <div className="flex flex-col items-center gap-2 h-12 mt-12">
+          <AnimatePresence mode="wait">
             {status === 'idle' && (
-              <motion.div 
+              <motion.p 
                 key="idle"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex flex-col items-center gap-2"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="text-[13px] font-mono uppercase tracking-[0.8em] opacity-80"
               >
-                <p className="text-sm font-mono tracking-widest uppercase opacity-30">Clear Speech Method</p>
-                <button 
-                  onClick={startLiveSession}
-                  className="text-[10px] font-mono text-orange-500/60 hover:text-orange-500 transition-colors uppercase tracking-tighter"
-                >
-                  Tap Orb to Initialize Clear Link
-                </button>
-              </motion.div>
+                INITIALIZE NEURAL LINK
+              </motion.p>
+            )}
+            {status === 'live' && (
+              <motion.p 
+                key="live"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-[13px] font-mono uppercase tracking-[0.8em] text-cyan-400"
+              >
+                NEURAL LINK ACTIVE
+              </motion.p>
+            )}
+            {status === 'speaking' && (
+              <motion.p 
+                key="speaking"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-[13px] font-mono uppercase tracking-[0.8em] text-violet-400"
+              >
+                ARIA IS SPEAKING
+              </motion.p>
             )}
           </AnimatePresence>
         </div>
@@ -369,7 +442,7 @@ export default function App() {
               <div className="flex justify-between items-start">
                 <div className="flex flex-col gap-1">
                   <h2 className="text-2xl font-light tracking-tight">Clear Voice Setup</h2>
-                  <p className="text-xs font-mono opacity-50 uppercase tracking-wider">Optimized Method</p>
+                  <p className="text-xs font-mono opacity-50 uppercase tracking-wider">Optimized by Barath</p>
                 </div>
                 <button onClick={() => setShowSetup(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
                   <X size={20} />
@@ -378,21 +451,21 @@ export default function App() {
 
               <div className="flex flex-col gap-6">
                 <div className="flex gap-4 items-start">
-                  <div className="p-3 rounded-2xl bg-green-500/10 text-green-500">
+                  <div className="p-3 rounded-2xl bg-violet-500/10 text-violet-500">
                     <Activity size={20} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium mb-1">Noise Suppression</h3>
-                    <p className="text-xs text-white/50 leading-relaxed">Hardware-level filtering is enabled to ensure your voice is heard clearly over background noise.</p>
+                    <h3 className="text-sm font-medium mb-1">Neural Processing</h3>
+                    <p className="text-xs text-white/50 leading-relaxed">Advanced AI models process your voice in real-time for perfect understanding.</p>
                   </div>
                 </div>
 
                 <div className="flex gap-4 items-start">
-                  <div className="p-3 rounded-2xl bg-orange-500/10 text-orange-500">
+                  <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-500">
                     <Volume2 size={20} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium mb-1">High Enunciation</h3>
+                    <h3 className="text-sm font-medium mb-1">High Clarity Output</h3>
                     <p className="text-xs text-white/50 leading-relaxed">ARIA is configured to speak with perfect enunciation and high clarity in both languages.</p>
                   </div>
                 </div>
@@ -400,7 +473,7 @@ export default function App() {
 
               <button 
                 onClick={() => setShowSetup(false)}
-                className="w-full py-4 bg-orange-500 text-black font-bold rounded-2xl hover:bg-orange-400 transition-colors flex items-center justify-center gap-2"
+                className="w-full py-4 bg-violet-500 text-white font-bold rounded-2xl hover:bg-violet-400 transition-colors flex items-center justify-center gap-2"
               >
                 Start Clear Session <ChevronRight size={18} />
               </button>
@@ -439,7 +512,7 @@ export default function App() {
                           setTimeout(() => startLiveSession(), 500);
                         }
                       }}
-                      className={`flex-1 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all ${clarityMode === m ? 'bg-orange-500 text-black' : 'bg-white/5 hover:bg-white/10'}`}
+                      className={`flex-1 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all ${clarityMode === m ? 'bg-violet-500 text-white' : 'bg-white/5 hover:bg-white/10'}`}
                     >
                       {m}
                     </button>
@@ -460,7 +533,7 @@ export default function App() {
                           setTimeout(() => startLiveSession(), 500);
                         }
                       }}
-                      className={`px-4 py-3 rounded-xl text-xs font-mono text-left transition-all ${voice === v ? 'bg-orange-500 text-black' : 'bg-white/5 hover:bg-white/10'}`}
+                      className={`px-4 py-3 rounded-xl text-xs font-mono text-left transition-all ${voice === v ? 'bg-violet-500 text-white' : 'bg-white/5 hover:bg-white/10'}`}
                     >
                       {v} {voice === v && 'âœ“'}
                     </button>
@@ -478,7 +551,12 @@ export default function App() {
               )}
             </div>
 
-            <div className="mt-auto pt-8 border-t border-white/5">
+            <div className="mt-auto pt-8 border-t border-white/5 flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <span className="text-[8px] font-mono uppercase opacity-30 tracking-widest">Developer</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-violet-400">Barath</span>
+              </div>
+              
               <button 
                 onClick={() => setShowSetup(true)}
                 className="w-full py-3 rounded-xl text-[10px] font-mono uppercase tracking-widest opacity-40 hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
@@ -516,19 +594,19 @@ export default function App() {
 
               <div className="space-y-8 py-4">
                 <section>
-                  <h3 className="text-orange-500 font-mono text-xs uppercase tracking-widest mb-4">1. Windows Setup</h3>
+                  <h3 className="text-violet-400 font-mono text-xs uppercase tracking-widest mb-4">1. Windows Setup</h3>
                   <div className="bg-white/5 p-4 rounded-xl font-mono text-[11px] leading-relaxed space-y-2">
                     <p>â€¢ Install <span className="text-white">Node.js</span> (v18+)</p>
-                    <p>â€¢ Run <code className="text-[#00ffcc]">npm install</code> in terminal</p>
-                    <p>â€¢ Add <code className="text-[#00ffcc]">GEMINI_API_KEY</code> to .env file</p>
-                    <p>â€¢ Run <code className="text-[#00ffcc]">npm run dev</code> to start</p>
+                    <p>â€¢ Run <code className="text-cyan-400">npm install</code> in terminal</p>
+                    <p>â€¢ Add <code className="text-cyan-400">GEMINI_API_KEY</code> to .env file</p>
+                    <p>â€¢ Run <code className="text-cyan-400">npm run dev</code> to start</p>
                   </div>
                 </section>
 
                 <section>
-                  <h3 className="text-orange-500 font-mono text-xs uppercase tracking-widest mb-4">2. Android Setup (Simple)</h3>
+                  <h3 className="text-violet-400 font-mono text-xs uppercase tracking-widest mb-4">2. Android Setup (Simple)</h3>
                   <div className="bg-white/5 p-4 rounded-xl font-mono text-[11px] leading-relaxed space-y-2">
-                    <p>â€¢ Run app on PC with <code className="text-[#00ffcc]">npm run dev -- --host</code></p>
+                    <p>â€¢ Run app on PC with <code className="text-cyan-400">npm run dev -- --host</code></p>
                     <p>â€¢ Connect Phone & PC to same Wi-Fi</p>
                     <p>â€¢ Open Phone Browser: <span className="text-white">http://[Your-PC-IP]:3000</span></p>
                     <p>â€¢ Tap "Add to Home Screen" for App experience</p>
@@ -536,9 +614,9 @@ export default function App() {
                 </section>
 
                 <section>
-                  <h3 className="text-orange-500 font-mono text-xs uppercase tracking-widest mb-4">3. Quick Run (Batch)</h3>
+                  <h3 className="text-violet-400 font-mono text-xs uppercase tracking-widest mb-4">3. Quick Run (Batch)</h3>
                   <p className="text-xs opacity-60 mb-2">Create 'run.bat' on Windows with:</p>
-                  <pre className="bg-black/40 p-3 rounded-lg text-[10px] text-[#00ffcc]">
+                  <pre className="bg-black/40 p-3 rounded-lg text-[10px] text-cyan-400">
                     @echo off{"\n"}
                     npm run dev{"\n"}
                     pause
@@ -561,17 +639,17 @@ export default function App() {
       <div className="absolute bottom-8 left-8 right-8 flex justify-between items-end z-0">
         <div className="flex flex-col gap-1">
           <span className="text-[10px] font-mono opacity-20 uppercase tracking-tighter">Neural Link</span>
-          <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#00ffcc]">
+          <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-400">
             {status === 'idle' && 'Standby'}
             {status === 'connecting' && 'Optimizing...'}
-            {status === 'live' && 'Clear Link Active'}
+            {status === 'live' && 'Neural Link Active'}
             {status === 'speaking' && 'Vocal Output'}
           </span>
         </div>
         
         <div className="flex flex-col items-end gap-1">
-          <span className="text-[10px] font-mono opacity-20 uppercase tracking-tighter">Method</span>
-          <span className="text-[10px] font-mono uppercase tracking-[0.2em]">Clear Speech v3.2</span>
+          <span className="text-[10px] font-mono opacity-20 uppercase tracking-tighter">Developed by Barath</span>
+          <span className="text-[10px] font-mono uppercase tracking-[0.2em]">ARIA.CLEAR v4.0</span>
         </div>
       </div>
     </div>

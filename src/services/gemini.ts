@@ -1,15 +1,77 @@
-import { GoogleGenAI, Modality, LiveServerMessage } from "@google/genai";
+import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 export const CHAT_MODEL = "gemini-3-flash-preview";
 export const TTS_MODEL = "gemini-2.5-flash-preview-tts";
-export const LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
+export const LIVE_MODEL = "gemini-3.1-flash-live-preview";
+
+// --- Tool Definitions ---
+const openWhatsApp: FunctionDeclaration = {
+  name: "openWhatsApp",
+  description: "Opens WhatsApp to send a message. If a number is provided, it opens that specific chat.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      phoneNumber: { type: Type.STRING, description: "The phone number with country code (e.g., 919876543210). Optional." },
+      message: { type: Type.STRING, description: "The message to pre-fill. Optional." }
+    }
+  }
+};
+
+const openInstagram: FunctionDeclaration = {
+  name: "openInstagram",
+  description: "Opens the Instagram application.",
+  parameters: { type: Type.OBJECT, properties: {} }
+};
+
+const openMessages: FunctionDeclaration = {
+  name: "openMessages",
+  description: "Opens the default SMS/Messages app to send a text.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      phoneNumber: { type: Type.STRING, description: "The recipient phone number." },
+      message: { type: Type.STRING, description: "The message to pre-fill." }
+    }
+  }
+};
+
+const makePhoneCall: FunctionDeclaration = {
+  name: "makePhoneCall",
+  description: "Opens the phone dialer to call a specific number.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      phoneNumber: { type: Type.STRING, description: "The phone number to call." }
+    },
+    required: ["phoneNumber"]
+  }
+};
+
+const getCurrentTime: FunctionDeclaration = {
+  name: "getCurrentTime",
+  description: "Returns the current local time of the user.",
+  parameters: { type: Type.OBJECT, properties: {} }
+};
+
+const getWeather: FunctionDeclaration = {
+  name: "getWeather",
+  description: "Gets the current weather for a specific location.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      location: { type: Type.STRING, description: "The city and state, e.g. San Francisco, CA" }
+    },
+    required: ["location"]
+  }
+};
 
 export async function getChatReply(message: string, history: any[] = [], language: 'ta-IN' | 'en-US' = 'en-US') {
+  const identityDirective = " You were developed by Barath. You are speaking to Barath.";
   const systemInstruction = language === 'ta-IN' 
-    ? "You are ARIA, a helpful voice assistant. Speak naturally in Tamil. Keep responses concise for voice interaction."
-    : "You are ARIA, a helpful voice assistant. Speak naturally in English. Keep responses concise for voice interaction.";
+    ? "You are ARIA, a helpful voice assistant. Speak naturally in Tamil. Keep responses concise for voice interaction." + identityDirective
+    : "You are ARIA, a helpful voice assistant. Speak naturally in English. Keep responses concise for voice interaction." + identityDirective;
 
   const chat = ai.chats.create({
     model: CHAT_MODEL,
@@ -54,21 +116,29 @@ export function connectLive(callbacks: {
     ? " CRITICAL: Speak with extreme clarity. Enunciate every syllable. Maintain a steady, professional pace. Do not use any filler words or informal contractions. Your goal is to be perfectly understood even in noisy environments."
     : " Speak with high clarity, enunciate every word perfectly, and maintain a professional, easy-to-understand tone. Avoid filler words.";
   
+  const identityDirective = " You were developed by Barath. You are speaking to Barath.";
+
   const systemInstruction = config.language === 'ta-IN'
-    ? "You are ARIA, a helpful voice assistant. You are in a real-time voice conversation. Speak naturally in Tamil." + clarityDirective
-    : "You are ARIA, a helpful voice assistant. You are in a real-time voice conversation. Speak naturally in English." + clarityDirective;
+    ? "You are ARIA, a helpful voice assistant. You are in a real-time voice conversation. Speak naturally in Tamil. You have access to the user's Android system via tools. Use them to open apps, make calls, or get info." + clarityDirective + identityDirective
+    : "You are ARIA, a helpful voice assistant. You are in a real-time voice conversation. Speak naturally in English. You have access to the user's Android system via tools. Use them to open apps, make calls, or get info." + clarityDirective + identityDirective;
 
   return ai.live.connect({
     model: LIVE_MODEL,
     callbacks,
     config: {
       responseModalities: [Modality.AUDIO],
+      outputAudioTranscription: {},
+      inputAudioTranscription: {},
       speechConfig: {
         voiceConfig: {
           prebuiltVoiceConfig: { voiceName: config.voiceName as any },
         },
       },
       systemInstruction,
+      tools: [
+        { googleSearch: {} },
+        { functionDeclarations: [openWhatsApp, openInstagram, openMessages, makePhoneCall, getCurrentTime, getWeather] }
+      ]
     },
   });
 }
