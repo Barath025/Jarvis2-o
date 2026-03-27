@@ -21,6 +21,7 @@ export default function App() {
   const [clarityMode, setClarityMode] = useState<ClarityMode>('high');
   const [showSetup, setShowSetup] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [showRunGuide, setShowRunGuide] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
   
   const sessionRef = useRef<any>(null);
@@ -240,6 +241,13 @@ export default function App() {
             className="glass p-2 rounded-full hover:bg-white/10 transition-colors"
           >
             <Settings size={14} />
+          </button>
+
+          <button 
+            onClick={() => setShowRunGuide(true)}
+            className="glass p-2 rounded-full hover:bg-white/10 transition-colors text-orange-500"
+          >
+            <Info size={14} />
           </button>
         </div>
       </div>
@@ -478,6 +486,73 @@ export default function App() {
                 <Info size={12} /> View Clarity Guide
               </button>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Run Guide Modal */}
+      <AnimatePresence>
+        {showRunGuide && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="glass max-w-2xl w-full max-h-[80vh] overflow-y-auto p-8 rounded-3xl flex flex-col gap-6 custom-scrollbar"
+            >
+              <div className="flex justify-between items-start sticky top-0 bg-transparent backdrop-blur-sm pb-4 border-b border-white/10">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-2xl font-light tracking-tight">Run Setup Guide</h2>
+                  <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">Windows & Android</p>
+                </div>
+                <button onClick={() => setShowRunGuide(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-8 py-4">
+                <section>
+                  <h3 className="text-orange-500 font-mono text-xs uppercase tracking-widest mb-4">1. Windows Setup</h3>
+                  <div className="bg-white/5 p-4 rounded-xl font-mono text-[11px] leading-relaxed space-y-2">
+                    <p>â€¢ Install <span className="text-white">Node.js</span> (v18+)</p>
+                    <p>â€¢ Run <code className="text-[#00ffcc]">npm install</code> in terminal</p>
+                    <p>â€¢ Add <code className="text-[#00ffcc]">GEMINI_API_KEY</code> to .env file</p>
+                    <p>â€¢ Run <code className="text-[#00ffcc]">npm run dev</code> to start</p>
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="text-orange-500 font-mono text-xs uppercase tracking-widest mb-4">2. Android Setup (Simple)</h3>
+                  <div className="bg-white/5 p-4 rounded-xl font-mono text-[11px] leading-relaxed space-y-2">
+                    <p>â€¢ Run app on PC with <code className="text-[#00ffcc]">npm run dev -- --host</code></p>
+                    <p>â€¢ Connect Phone & PC to same Wi-Fi</p>
+                    <p>â€¢ Open Phone Browser: <span className="text-white">http://[Your-PC-IP]:3000</span></p>
+                    <p>â€¢ Tap "Add to Home Screen" for App experience</p>
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="text-orange-500 font-mono text-xs uppercase tracking-widest mb-4">3. Quick Run (Batch)</h3>
+                  <p className="text-xs opacity-60 mb-2">Create 'run.bat' on Windows with:</p>
+                  <pre className="bg-black/40 p-3 rounded-lg text-[10px] text-[#00ffcc]">
+                    @echo off{"\n"}
+                    npm run dev{"\n"}
+                    pause
+                  </pre>
+                </section>
+              </div>
+
+              <button 
+                onClick={() => setShowRunGuide(false)}
+                className="w-full py-4 border border-white/10 rounded-2xl hover:bg-white/5 transition-colors font-mono text-[10px] uppercase tracking-widest"
+              >
+                Close Guide
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
