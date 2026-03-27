@@ -1,0 +1,7 @@
+{
+  "name": "ARIA Voice Assistant",
+  "description": "A human-like voice assistant supporting Tamil and English, powered by Gemini 2.5.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
