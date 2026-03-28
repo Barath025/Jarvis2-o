@@ -13,12 +13,14 @@ type Language = 'ta-IN' | 'en-US';
 type Status = 'idle' | 'connecting' | 'live' | 'speaking';
 type Voice = 'Aoede' | 'Kore' | 'Charon' | 'Fenrir' | 'Puck';
 type ClarityMode = 'natural' | 'high';
+type Theme = 'nebula' | 'electric' | 'emerald';
 
 export default function App() {
   const [status, setStatus] = useState<Status>('idle');
   const [language, setLanguage] = useState<Language>('en-US');
   const [voice, setVoice] = useState<Voice>('Aoede');
   const [clarityMode, setClarityMode] = useState<ClarityMode>('high');
+  const [theme, setTheme] = useState<Theme>('nebula');
   const [showSetup, setShowSetup] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [showRunGuide, setShowRunGuide] = useState(false);
@@ -285,7 +287,7 @@ export default function App() {
   };
 
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center p-6 overflow-hidden">
+    <div className={`relative min-h-screen flex flex-col items-center justify-center p-6 overflow-hidden theme-${theme}`}>
       <div className="atmosphere" />
       
       {/* Header */}
@@ -515,6 +517,21 @@ export default function App() {
                       className={`flex-1 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all ${clarityMode === m ? 'bg-violet-500 text-white' : 'bg-white/5 hover:bg-white/10'}`}
                     >
                       {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Aura Theme</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['nebula', 'electric', 'emerald'] as Theme[]).map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setTheme(t)}
+                      className={`py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all ${theme === t ? 'bg-violet-500 text-white' : 'bg-white/5 hover:bg-white/10'}`}
+                    >
+                      {t}
                     </button>
                   ))}
                 </div>

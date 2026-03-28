@@ -13,23 +13,46 @@
   --glass-border: rgba(255, 255, 255, 0.05);
 }
 
+.theme-nebula {
+  --color-accent: #7c3aed;
+  --color-secondary: #3b82f6;
+  --bg-gradient: radial-gradient(circle at 50% 50%, #1a1a3a 0%, #02020a 100%);
+}
+
+.theme-electric {
+  --color-accent: #00f2ff;
+  --color-secondary: #3b82f6;
+  --bg-gradient: radial-gradient(circle at 50% 50%, #0a1a3a 0%, #02020a 100%);
+}
+
+.theme-emerald {
+  --color-accent: #00ff88;
+  --color-secondary: #0088ff;
+  --bg-gradient: radial-gradient(circle at 50% 50%, #0a3a2a 0%, #02020a 100%);
+}
+
 body {
   background-color: var(--color-bg);
   color: #fff;
   font-family: var(--font-sans);
   overflow: hidden;
-  background: 
-    radial-gradient(circle at 50% 50%, #1a1a3a 0%, #02020a 100%);
+  transition: background 0.8s ease;
+}
+
+.theme-nebula, .theme-electric, .theme-emerald {
+  background: var(--bg-gradient);
 }
 
 .atmosphere {
   position: fixed;
   inset: 0;
   background: 
-    radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.15) 0%, transparent 60%),
-    radial-gradient(circle at 50% 50%, rgba(124, 58, 237, 0.1) 0%, transparent 80%);
+    radial-gradient(circle at 50% 50%, var(--color-secondary) 0%, transparent 60%),
+    radial-gradient(circle at 50% 50%, var(--color-accent) 0%, transparent 80%);
   filter: blur(100px);
   z-index: -1;
+  opacity: 0.15;
+  transition: all 0.8s ease;
 }
 
 .glass {
@@ -58,12 +81,12 @@ body {
 }
 
 .aura-1 {
-  background: radial-gradient(circle, #3b82f6 0%, transparent 70%);
+  background: radial-gradient(circle, var(--color-secondary) 0%, transparent 70%);
   animation: aura-pulse 4s ease-in-out infinite;
 }
 
 .aura-2 {
-  background: radial-gradient(circle, #7c3aed 0%, transparent 70%);
+  background: radial-gradient(circle, var(--color-accent) 0%, transparent 70%);
   animation: aura-pulse 6s ease-in-out infinite reverse;
   opacity: 0.3;
 }
@@ -81,7 +104,7 @@ body {
   z-index: 10;
   box-shadow: 
     0 0 40px rgba(255, 255, 255, 0.9),
-    0 0 80px rgba(59, 130, 246, 0.4);
+    0 0 80px var(--color-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
