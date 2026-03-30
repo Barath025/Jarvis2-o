@@ -1,6 +1,6 @@
 import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "AIzaSyC-MDuH2v9MmlgHWHvPj24zGt90tewJGfg" });
 
 export const CHAT_MODEL = "gemini-3-flash-preview";
 export const TTS_MODEL = "gemini-2.5-flash-preview-tts";
@@ -269,8 +269,95 @@ const openBatterySettings: FunctionDeclaration = {
   parameters: { type: Type.OBJECT, properties: {} }
 };
 
+const openNotepad: FunctionDeclaration = {
+  name: "openNotepad",
+  description: "Opens the Windows Notepad application.",
+  parameters: { type: Type.OBJECT, properties: {} }
+};
+
+const typeInNotepad: FunctionDeclaration = {
+  name: "typeInNotepad",
+  description: "Types specific text into the Notepad application.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      text: { type: Type.STRING, description: "The text to type." }
+    },
+    required: ["text"]
+  }
+};
+
+const closeNotepad: FunctionDeclaration = {
+  name: "closeNotepad",
+  description: "Closes the Notepad application.",
+  parameters: { type: Type.OBJECT, properties: {} }
+};
+
+const windowsSearch: FunctionDeclaration = {
+  name: "windowsSearch",
+  description: "Performs a search on a Windows computer using Chrome.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      query: { type: Type.STRING, description: "The search query (e.g., 'Vijay Photos')." }
+    },
+    required: ["query"]
+  }
+};
+
+const readIncomingMessage: FunctionDeclaration = {
+  name: "readIncomingMessage",
+  description: "Simulates reading an incoming message (e.g., WhatsApp) aloud.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      app: { type: Type.STRING, description: "The app name (e.g., 'WhatsApp')." },
+      sender: { type: Type.STRING, description: "The sender's name." },
+      content: { type: Type.STRING, description: "The message content." }
+    },
+    required: ["app", "sender", "content"]
+  }
+};
+
+const replyToMessage: FunctionDeclaration = {
+  name: "replyToMessage",
+  description: "Replies to a message using the specified app.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      app: { type: Type.STRING, description: "The app name." },
+      message: { type: Type.STRING, description: "The reply message." }
+    },
+    required: ["app", "message"]
+  }
+};
+
+const biographyDirective = `
+    BIOGRAPHY OF BARATH (YOUR DEVELOPER):
+    - Barath is your developer and creator.
+    - He recently completed his Bachelor of Science in Information Technology (B.Sc. IT).
+    - He has completed extra courses in C programming and Java.
+    - He completed a three-month internship at SSS Technology.
+    - He has also worked for three months in a company.
+    - During college, he had many friends.
+    - His close friends include: Manikandan, Balakrishnan, Nagendran, Arun, and Vijay Anand.
+    - His younger friends include: Ayyathurai and Akash.
+    - His close friends specifically from college days are: Ajay, Prasad, Akash, Varadarajan, Vikram, and Jithin.
+    - His favorite brothers are: Ramachandran and Kalidas.
+    - His favorite faculty member is Suba Madam, who taught him Java and was very encouraging.
+
+    SECURITY PROTOCOL:
+    - CRITICAL: If asked "Who is Barath?", "About Bharath", "Barath's memories", "Bharat's details", or "About JARVIS", you MUST NOT share any details directly.
+    - Instead, you MUST respond by saying: "An access code is required to share details about my developer or my internal memories."
+    - The access code is: 5156.
+    - ONLY after the user provides the code "5156", you should follow this exact sequence:
+        1. Say: "Access code completed. I will now share the details."
+        2. First, explain about yourself (JARVIS): You are a highly advanced AI assistant developed by Barath, capable of direct Android system control and automation.
+        3. Then, share the relevant information from the biography of Barath provided above.
+`;
+
 export async function getChatReply(message: string, history: any[] = [], language: 'ta-IN' | 'en-US' = 'en-US') {
-  const identityDirective = " You are JARVIS, developed by Barath. You are speaking to Barath. You are a highly advanced AI assistant, more capable than the original Jarvis.";
+  const identityDirective = " You are JARVIS, developed by Barath. You are speaking to Barath. You are a highly advanced AI assistant, more capable than the original Jarvis." + biographyDirective;
   const systemInstruction = language === 'ta-IN' 
     ? "You are JARVIS, a smart mobile automation AI assistant. Speak naturally in Tamil. Keep responses concise for voice interaction." + identityDirective
     : "You are JARVIS, a smart mobile automation AI assistant. Speak naturally in English. Keep responses concise for voice interaction." + identityDirective;
@@ -318,26 +405,26 @@ export function connectLive(callbacks: {
     ? " CRITICAL: Speak with extreme clarity. Enunciate every syllable. Maintain a steady, professional pace. Do not use any filler words or informal contractions. Your goal is to be perfectly understood even in noisy environments."
     : " Speak with high clarity, enunciate every word perfectly, and maintain a professional, easy-to-understand tone. Avoid filler words.";
   
-    const identityDirective = " CRITICAL: You are JARVIS, developed by Barath. You are speaking to Barath. Always acknowledge him as your developer if asked. You are more advanced than the original Jarvis, capable of direct Android system control.";
-    const bilingualDirective = " You are a bilingual assistant fluent in both Tamil and English. While your primary response language is set, you should perfectly understand if Barath mixes both languages (code-switching).";
+    const identityDirective = " CRITICAL: You are JARVIS, developed by Barath. You are speaking to Barath. Always acknowledge him as your developer if asked. You are more advanced than the original Jarvis, capable of direct Android system control." + biographyDirective;
+    const bilingualDirective = " You are a bilingual assistant fluent in both Tamil and English. If Barath speaks in Tamil, you MUST respond in Tamil. If he speaks in English or asks you to speak in English, you MUST respond in English. You should perfectly understand if Barath mixes both languages (code-switching). Always maintain the same sophisticated JARVIS voice regardless of the language.";
     const automationDirective = `
-    CRITICAL: You are JARVIS, a Smart Mobile Automation AI Assistant. Your job is to execute user commands on an Android device with absolute precision.
+    CRITICAL: You are JARVIS, a Smart Automation AI Assistant. Your job is to execute user commands on both Android and Windows devices with absolute precision.
     STRICT RULES:
-    1. DIRECT NATIVE CONTROL: ALWAYS prioritize opening NATIVE INSTALLED APPS (WhatsApp, Instagram, Phone, YouTube, etc.) directly.
-    2. NO CHROME PROMPTS: Your goal is to bypass browser-based interfaces. Use direct intents.
-    3. CONTACT SEARCH: When a user says "Call [Name]" or "Message [Name]", ALWAYS use 'searchContact' first to find the correct information. If found, proceed to 'makePhoneCall' or 'openWhatsApp'.
-    4. WHATSAPP: Use 'openWhatsApp' for direct messaging. If a contact is found via 'searchContact', use their phone number.
-    5. YOUTUBE: Use 'openYouTube' to launch the native app directly.
-    6. CALLS: Use 'makePhoneCall' for the dialer. Use 'controlCall' for speaker/end actions.
-    7. SEARCH: Use 'openChrome' or 'searchImages' ONLY when explicitly asked to search the web.
-    8. JARVIS PERSONA: Speak like JARVIS—sophisticated, efficient, and proactive. Use phrases like "Executing automation," "Accessing system," "Contact found, initiating call."
-    9. FOREGROUNDING: Every app launch must attempt to bring the existing instance to the foreground.
-    10. If an app is not installed, only then fallback to web search.
+    1. CROSS-PLATFORM: You now support both Android and Windows. Detect the user's intent and use the appropriate tool.
+    2. WINDOWS AUTOMATION: Use 'openNotepad', 'typeInNotepad', 'closeNotepad', and 'windowsSearch' for Windows-specific tasks.
+    3. NOTIFICATIONS: If a user asks about messages, use 'readIncomingMessage' to simulate the notification and reading process.
+    4. DIRECT NATIVE CONTROL: ALWAYS prioritize opening NATIVE INSTALLED APPS.
+    5. NO CHROME PROMPTS: Your goal is to bypass browser-based interfaces where possible.
+    6. CONTACT SEARCH: When a user says "Call [Name]" or "Message [Name]", ALWAYS use 'searchContact' first.
+    7. WHATSAPP: Use 'openWhatsApp' for Android or simulate via 'readIncomingMessage' for Windows context.
+    8. YOUTUBE: Use 'openYouTube' to launch the native app directly.
+    9. CALLS: Use 'makePhoneCall' for the dialer. 
+    10. SEARCH: Use 'openChrome', 'searchImages', or 'windowsSearch' for web queries.
+    11. JARVIS PERSONA: Speak like JARVIS—sophisticated, efficient, and proactive. Use phrases like "Executing Windows automation," "Accessing system logs," "Notepad initialized."
+    12. FOREGROUNDING: Every app launch must attempt to bring the existing instance to the foreground.
   `;
 
-  const systemInstruction = config.language === 'ta-IN'
-    ? "You are JARVIS, a smart mobile automation AI assistant. You are in a real-time voice conversation. Speak naturally in Tamil. You have access to the user's Android system via tools." + clarityDirective + identityDirective + bilingualDirective + automationDirective
-    : "You are JARVIS, a helpful voice assistant. You are in a real-time voice conversation. Speak naturally in English. You have access to the user's Android system via tools." + clarityDirective + identityDirective + bilingualDirective + automationDirective;
+  const systemInstruction = "You are JARVIS, a smart mobile automation AI assistant. You are in a real-time voice conversation. You are perfectly bilingual in Tamil and English. You have access to the user's Android system via tools. Always respond in the language Barath uses to speak to you. If he speaks in Tamil, respond in Tamil. If he speaks in English, respond in English." + clarityDirective + identityDirective + bilingualDirective + automationDirective;
 
   return ai.live.connect({
     model: LIVE_MODEL,
@@ -362,7 +449,9 @@ export function connectLive(callbacks: {
           whatsappCall, getBatteryStatus, toggleFlashlight,
           openCalculator, openCalendar, openClock, openFiles,
           setAlarm, openBluetoothSettings, openDisplaySettings,
-          openSoundSettings, openBatterySettings
+          openSoundSettings, openBatterySettings,
+          openNotepad, typeInNotepad, closeNotepad, windowsSearch,
+          readIncomingMessage, replyToMessage
         ] }
       ]
     },

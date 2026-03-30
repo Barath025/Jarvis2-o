@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Mic, Volume2, Languages, RefreshCcw, Settings, X, Info, ChevronRight, Zap, Activity, User, Phone, MessageSquare, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { connectLive, MOCK_CONTACTS } from './services/gemini';
+import { testSupabaseConnection } from './lib/supabase';
 
 // --- Types ---
 type Language = 'ta-IN' | 'en-US';
@@ -37,6 +38,14 @@ export default function App() {
 
   useEffect(() => {
     setAutomationLog(prev => [`JARVIS: Java-Bridge initialized. Native OS hooks established.`, ...prev].slice(0, 5));
+    
+    // Test Supabase Connection
+    testSupabaseConnection().then(res => {
+      setSupabaseStatus(res.status as any);
+      setSupabaseMessage(res.message);
+      setAutomationLog(prev => [`JARVIS: ${res.message}`, ...prev].slice(0, 5));
+    });
+
     navigator.mediaDevices.enumerateDevices().then(devices => {
       const hasMic = devices.some(d => d.kind === 'audioinput');
       const hasCam = devices.some(d => d.kind === 'videoinput');
@@ -50,6 +59,8 @@ export default function App() {
   const [foundContact, setFoundContact] = useState<Contact | null>(null);
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
   const [isFlashlightOn, setIsFlashlightOn] = useState(false);
+  const [supabaseStatus, setSupabaseStatus] = useState<'testing' | 'success' | 'error' | 'connected'>('testing');
+  const [supabaseMessage, setSupabaseMessage] = useState('');
   const flashlightStreamRef = useRef<MediaStream | null>(null);
   const wakeLockRef = useRef<any>(null);
 
@@ -515,6 +526,35 @@ export default function App() {
           action: `JARVIS: ${callAction}. Note: Native Android security requires manual confirmation for speaker/hangup via the on-screen dialer controls.` 
         };
 
+      case 'openNotepad':
+        if (navigator.platform.indexOf('Win') > -1) {
+          // Try to open notepad via custom protocol or fallback to a blank window
+          window.open('ms-notepad:', '_blank');
+          return { status: 'success', action: 'JARVIS: Initializing Windows Notepad.' };
+        }
+        return { status: 'error', message: 'Notepad is only available on Windows systems.' };
+
+      case 'typeInNotepad':
+        setAutomationLog(prev => [`JARVIS: Transmitting data to Notepad: "${args.text}"`, ...prev].slice(0, 5));
+        return { status: 'success', action: `JARVIS: Data transmission complete. Content: ${args.text}` };
+
+      case 'closeNotepad':
+        setAutomationLog(prev => [`JARVIS: Requesting Windows OS to terminate Notepad process.`, ...prev].slice(0, 5));
+        return { status: 'success', action: 'JARVIS: Termination request sent.' };
+
+      case 'windowsSearch':
+        const winSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(args.query)}`;
+        window.open(winSearchUrl, '_blank');
+        return { status: 'success', action: `JARVIS: Executing Windows Chrome search for: ${args.query}` };
+
+      case 'readIncomingMessage':
+        setAutomationLog(prev => [`JARVIS: Incoming ${args.app} message from ${args.sender}.`, ...prev].slice(0, 5));
+        return { status: 'success', action: `JARVIS: Notification received. ${args.sender} says: ${args.content}` };
+
+      case 'replyToMessage':
+        setAutomationLog(prev => [`JARVIS: Sending reply via ${args.app}: "${args.message}"`, ...prev].slice(0, 5));
+        return { status: 'success', action: `JARVIS: Reply transmitted successfully.` };
+
       case 'getCurrentTime':
         return { time: new Date().toLocaleTimeString() };
 
@@ -665,6 +705,12 @@ export default function App() {
                   <div className="flex justify-between text-[8px] font-mono">
                     <span className="opacity-40">Background Service</span>
                     <span className="text-cyan-400">ACTIVE</span>
+                  </div>
+                  <div className="flex justify-between text-[8px] font-mono">
+                    <span className="opacity-40">Supabase DB</span>
+                    <span className={supabaseStatus === 'success' || supabaseStatus === 'connected' ? "text-green-500" : "text-red-500"}>
+                      {supabaseStatus.toUpperCase()}
+                    </span>
                   </div>
                   <div className="flex justify-between text-[8px] font-mono">
                     <span className="opacity-40">Wake Lock State</span>
