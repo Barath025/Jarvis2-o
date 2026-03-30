@@ -64,7 +64,31 @@ If you want a real `.apk` file:
 
 ---
 
-## 4. Simple "One-Click" Run (Windows)
+## 5. Android Intent Capabilities (Direct App Interaction)
+
+ARIA is optimized to interact directly with your Android applications using native intents. This means it can open apps and perform actions without using a web browser.
+
+### Supported Direct Actions:
+- **WhatsApp**: "Open WhatsApp" or "Send a message to [Number] on WhatsApp"
+- **Instagram**: "Open Instagram"
+- **Messages (SMS)**: "Send a text to [Number]"
+- **Phone Calls**: "Call [Number]"
+- **YouTube**: "Open YouTube"
+- **Maps**: "Open Maps" or "Search for [Location] on Maps"
+- **Gmail**: "Open Gmail"
+- **Settings**: "Open Android Settings"
+- **Camera**: "Open Camera"
+- **Gallery**: "Open Gallery"
+- **Play Store**: "Open Play Store"
+
+### Important Note on Contacts:
+Due to browser privacy restrictions, ARIA cannot directly access your phone's contact list. 
+- **To send a message**: Please provide the phone number (e.g., "Send a message to 919876543210").
+- **Future Updates**: If you use the **Native App (Capacitor)** method, future versions may include a plugin to sync your contacts with the assistant.
+
+---
+
+## 6. Simple "One-Click" Run (Windows)
 Create a file named `run_aria.bat` in the project folder and paste this:
 ```batch
 @echo off
