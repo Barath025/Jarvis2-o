@@ -12,7 +12,7 @@ import { testSupabaseConnection } from './lib/supabase';
 // --- Types ---
 type Language = 'ta-IN' | 'en-US';
 type Status = 'idle' | 'connecting' | 'live' | 'speaking';
-type Voice = 'Aoede' | 'Kore' | 'Charon' | 'Fenrir' | 'Puck';
+type Voice = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr';
 type ClarityMode = 'natural' | 'high';
 type Theme = 'nebula' | 'electric' | 'emerald';
 
@@ -26,7 +26,7 @@ interface Contact {
 export default function App() {
   const [status, setStatus] = useState<Status>('idle');
   const [language, setLanguage] = useState<Language>('en-US');
-  const [voice, setVoice] = useState<Voice>('Aoede');
+  const [voice, setVoice] = useState<Voice>('Zephyr');
   const [clarityMode, setClarityMode] = useState<ClarityMode>('high');
   const [theme, setTheme] = useState<Theme>('nebula');
   const [showSetup, setShowSetup] = useState(true);
@@ -181,7 +181,7 @@ export default function App() {
       };
       updateMicLevel();
       
-      const session = await connectLive({
+      const sessionPromise = connectLive({
         onopen: () => {
           if (!audioContextRef.current) return;
           setStatus('live');
@@ -198,8 +198,10 @@ export default function App() {
             }
             
             const base64Data = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
-            session.sendRealtimeInput({
-              audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+            sessionPromise.then(session => {
+              session.sendRealtimeInput({
+                audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+              });
             });
           };
           
@@ -263,7 +265,9 @@ export default function App() {
                 const result = await handleToolCall(name, args);
                 responses.push({ name, response: { result }, id });
               }
-              sessionRef.current?.sendToolResponse({ functionResponses: responses });
+              sessionPromise.then(session => {
+                session.sendToolResponse({ functionResponses: responses });
+              });
             }
           }
         },
@@ -275,7 +279,8 @@ export default function App() {
           stopLiveSession();
         }
       }, { language, voiceName: voice, clarityMode });
-
+      
+      const session = await sessionPromise;
       sessionRef.current = session;
     } catch (err) {
       console.error('Failed to start live session:', err);
@@ -1101,7 +1106,7 @@ export default function App() {
               <div className="flex flex-col gap-3">
                 <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Voice Profile</label>
                 <div className="grid grid-cols-1 gap-2">
-                  {(['Aoede', 'Kore', 'Charon', 'Fenrir', 'Puck'] as Voice[]).map(v => (
+                  {(['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'] as Voice[]).map(v => (
                     <button
                       key={v}
                       onClick={() => {

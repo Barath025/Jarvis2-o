@@ -1,6 +1,6 @@
 import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "AIzaSyC-MDuH2v9MmlgHWHvPj24zGt90tewJGfg" });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 export const CHAT_MODEL = "gemini-3-flash-preview";
 export const TTS_MODEL = "gemini-2.5-flash-preview-tts";
@@ -373,7 +373,7 @@ export async function getChatReply(message: string, history: any[] = [], languag
   return response.text;
 }
 
-export async function getTTSAudio(text: string, voiceName: string = 'Aoede') {
+export async function getTTSAudio(text: string, voiceName: string = 'Zephyr') {
   const response = await ai.models.generateContent({
     model: TTS_MODEL,
     contents: [{ parts: [{ text }] }],
@@ -440,7 +440,6 @@ export function connectLive(callbacks: {
       },
       systemInstruction,
       tools: [
-        { googleSearch: {} },
         { functionDeclarations: [
           openWhatsApp, openInstagram, openMessages, makePhoneCall, 
           getCurrentTime, getWeather, openYouTube, openMaps, 
