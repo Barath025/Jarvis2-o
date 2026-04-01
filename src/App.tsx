@@ -14,7 +14,7 @@ type Language = 'ta-IN' | 'en-US';
 type Status = 'idle' | 'connecting' | 'live' | 'speaking';
 type Voice = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr';
 type ClarityMode = 'natural' | 'high';
-type Theme = 'nebula' | 'electric' | 'emerald';
+type Theme = 'nebula' | 'electric' | 'emerald' | 'ruby' | 'gold' | 'obsidian';
 type SystemEnv = 'android' | 'windows' | 'auto';
 
 interface Contact {
@@ -1207,7 +1207,7 @@ export default function App() {
               <div className="flex flex-col gap-3">
                 <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Aura Theme</label>
                 <div className="grid grid-cols-3 gap-2">
-                  {(['nebula', 'electric', 'emerald'] as Theme[]).map(t => (
+                  {(['nebula', 'electric', 'emerald', 'ruby', 'gold', 'obsidian'] as Theme[]).map(t => (
                     <button
                       key={t}
                       onClick={() => setTheme(t)}

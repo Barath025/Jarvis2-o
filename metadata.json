@@ -1,6 +1,6 @@
 {
-  "name": "ARIA Voice Assistant",
-  "description": "A human-like voice assistant supporting Tamil and English, powered by Gemini 2.5.",
+  "name": "JARVIS Voice Assistant",
+  "description": "A highly advanced JARVIS-themed voice assistant capable of Android and Windows system control, powered by Gemini 3.",
   "requestFramePermissions": [
     "microphone",
     "camera",

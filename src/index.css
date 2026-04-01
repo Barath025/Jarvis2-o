@@ -31,6 +31,24 @@
   --bg-gradient: radial-gradient(circle at 50% 50%, #0a3a2a 0%, #02020a 100%);
 }
 
+.theme-ruby {
+  --color-accent: #ff3366;
+  --color-secondary: #ff0000;
+  --bg-gradient: radial-gradient(circle at 50% 50%, #3a0a1a 0%, #02020a 100%);
+}
+
+.theme-gold {
+  --color-accent: #ffcc00;
+  --color-secondary: #ff9900;
+  --bg-gradient: radial-gradient(circle at 50% 50%, #3a2a0a 0%, #02020a 100%);
+}
+
+.theme-obsidian {
+  --color-accent: #ffffff;
+  --color-secondary: #444444;
+  --bg-gradient: radial-gradient(circle at 50% 50%, #1a1a1a 0%, #000000 100%);
+}
+
 body {
   background-color: var(--color-bg);
   color: #fff;
@@ -39,7 +57,7 @@ body {
   transition: background 0.8s ease;
 }
 
-.theme-nebula, .theme-electric, .theme-emerald {
+.theme-nebula, .theme-electric, .theme-emerald, .theme-ruby, .theme-gold, .theme-obsidian {
   background: var(--bg-gradient);
 }
 
