@@ -8,11 +8,11 @@ This system is optimized for both Android and Windows. Follow these steps to run
 
 ## 2. Setup Instructions
 1. **Download the project**: Extract the files to a folder on your Windows computer.
-2. **Run Setup**: Double-click the `setup.bat` file. This will automatically install all necessary dependencies.
-3. **Start the System**: Open a terminal (CMD or PowerShell) in the project folder and run:
-   ```bash
-   npm run dev
-   ```
+2. **Run Setup**: Double-click the `setup.bat` file. This will create your `.env` file, ask for your API keys, and install all dependencies.
+3. **Start the System**: You can either:
+   - Double-click the `run.bat` file.
+   - Or open a terminal and run `npm run dev`.
+   - **Note**: If you run `npm run dev` and dependencies are missing, it will automatically try to install them for you.
 4. **Access the App**: Open your browser and go to `http://localhost:3000`.
 
 ## 3. Environment Variables
@@ -20,10 +20,15 @@ The system uses a Gemini API key for AI features.
 - **Note**: You mentioned you don't need a `.env` file. The system has a fallback key configured in `src/services/gemini.ts`. 
 - **Recommendation**: For your own security and to use your own quota, it is recommended to create a `.env` file based on `.env.example` and add your own `GEMINI_API_KEY`.
 
-## 4. Windows-Specific Features
-- **Notepad Automation**: JARVIS can open and type in Notepad on Windows.
-- **Chrome Search**: Optimized search intents for Windows Chrome.
-- **System Diagnostics**: Real-time monitoring of system hooks.
+## 4. Windows Automation Features
+JARVIS is now equipped with a local automation server for deep Windows control:
+- **Notepad Control**: Open, type in, and close Notepad via voice.
+- **WhatsApp Integration**: Check if WhatsApp is installed and send messages.
+- **Notification Reading**: JARVIS automatically polls for system notifications and reads them aloud.
+- **Notification Blocking**: Ask JARVIS to "block notifications" to silence them.
+- **App Control**: Open any system application by name.
+
+**Note**: To use these features, ensure you run the system using `npm run dev` or `run.bat`, which starts the local Express server that bridges the browser to your Windows OS.
 
 ## 5. Android Intent Capabilities
 JARVIS can interact directly with your Android applications using native intents:

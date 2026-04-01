@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port=3000 --host=0.0.0.0",
+    "dev": "tsx server.ts",
+    "predev": "node -e \"if (!require('fs').existsSync('node_modules')) { console.log('Installing dependencies...'); require('child_process').execSync('npm install', {stdio: 'inherit'}); }\"",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rimraf dist",

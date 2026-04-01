@@ -1,8 +1,21 @@
 import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+const getApiKey = () => {
+  // Try to get from import.meta.env (Vite built-in) or process.env (Vite define)
+  const vKey = import.meta.env?.VITE_GEMINI_API_KEY;
+  const vApiKey = import.meta.env?.VITE_API_KEY;
+  const pKey = typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined;
+  const pApiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
 
-export const CHAT_MODEL = "gemini-3-flash-preview";
+  const key = vKey || vApiKey || pKey || pApiKey;
+
+  if (!key || key === "MY_GEMINI_API_KEY" || key === "") {
+    throw new Error("Gemini API Key not configured. Please add GEMINI_API_KEY to your secrets.");
+  }
+  return key;
+};
+
+export const CHAT_MODEL = "gemini-flash-latest";
 export const TTS_MODEL = "gemini-2.5-flash-preview-tts";
 export const LIVE_MODEL = "gemini-3.1-flash-live-preview";
 
@@ -305,6 +318,36 @@ const windowsSearch: FunctionDeclaration = {
   }
 };
 
+const checkAppInstalled: FunctionDeclaration = {
+  name: "checkAppInstalled",
+  description: "Checks if a specific application is installed on the Windows system.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      appName: { type: Type.STRING, description: "The name of the app to check (e.g., 'WhatsApp')." }
+    },
+    required: ["appName"]
+  }
+};
+
+const getSystemNotifications: FunctionDeclaration = {
+  name: "getSystemNotifications",
+  description: "Retrieves recent system notifications to be read aloud.",
+  parameters: { type: Type.OBJECT, properties: {} }
+};
+
+const blockNotifications: FunctionDeclaration = {
+  name: "blockNotifications",
+  description: "Blocks or unblocks system notifications as requested by the user.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      block: { type: Type.BOOLEAN, description: "True to block, false to unblock." }
+    },
+    required: ["block"]
+  }
+};
+
 const readIncomingMessage: FunctionDeclaration = {
   name: "readIncomingMessage",
   description: "Simulates reading an incoming message (e.g., WhatsApp) aloud.",
@@ -332,6 +375,12 @@ const replyToMessage: FunctionDeclaration = {
   }
 };
 
+const reportSystemStatus: FunctionDeclaration = {
+  name: "reportSystemStatus",
+  description: "Reads and reports all current system notifications, battery status, and other vital system information clearly.",
+  parameters: { type: Type.OBJECT, properties: {} }
+};
+
 const biographyDirective = `
     BIOGRAPHY OF BARATH (YOUR DEVELOPER):
     - Barath is your developer and creator.
@@ -357,6 +406,7 @@ const biographyDirective = `
 `;
 
 export async function getChatReply(message: string, history: any[] = [], language: 'ta-IN' | 'en-US' = 'en-US') {
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   const identityDirective = " You are JARVIS, developed by Barath. You are speaking to Barath. You are a highly advanced AI assistant, more capable than the original Jarvis." + biographyDirective;
   const systemInstruction = language === 'ta-IN' 
     ? "You are JARVIS, a smart mobile automation AI assistant. Speak naturally in Tamil. Keep responses concise for voice interaction." + identityDirective
@@ -374,6 +424,7 @@ export async function getChatReply(message: string, history: any[] = [], languag
 }
 
 export async function getTTSAudio(text: string, voiceName: string = 'Zephyr') {
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   const response = await ai.models.generateContent({
     model: TTS_MODEL,
     contents: [{ parts: [{ text }] }],
@@ -400,32 +451,41 @@ export function connectLive(callbacks: {
   language: 'ta-IN' | 'en-US';
   voiceName: string;
   clarityMode?: 'natural' | 'high';
+  systemEnv?: 'android' | 'windows' | 'auto';
 }) {
+  const systemContext = config.systemEnv === 'android' 
+    ? " You are currently running on an ANDROID device. Prioritize Android tools and intents."
+    : config.systemEnv === 'windows'
+    ? " You are currently running on a WINDOWS PC. Prioritize Windows automation tools like Notepad and PowerShell-based commands."
+    : " You are running in a CROSS-PLATFORM environment. Automatically detect if the user's command is for Android or Windows and act accordingly.";
+
   const clarityDirective = config.clarityMode === 'high'
-    ? " CRITICAL: Speak with extreme clarity. Enunciate every syllable. Maintain a steady, professional pace. Do not use any filler words or informal contractions. Your goal is to be perfectly understood even in noisy environments."
-    : " Speak with high clarity, enunciate every word perfectly, and maintain a professional, easy-to-understand tone. Avoid filler words.";
+    ? " CRITICAL: Speak with extreme clarity. Enunciate every syllable. Maintain a steady, professional, and sophisticated pace. Do not use any filler words, informal contractions, or slang. Your goal is to be perfectly understood. If the user is silent, you MUST remain silent as well. DO NOT ask 'Are you there?', 'Can you hear me?', or any similar presence-check questions. Only speak when you have a direct response to the user or a real system notification to report."
+    : " Speak with high clarity, enunciate every word perfectly, and maintain a professional, sophisticated tone. Avoid filler words. Remain silent when the user is silent; do not prompt the user for a response unless it is part of a multi-step task.";
   
-    const identityDirective = " CRITICAL: You are JARVIS, developed by Barath. You are speaking to Barath. Always acknowledge him as your developer if asked. You are more advanced than the original Jarvis, capable of direct Android system control." + biographyDirective;
+    const identityDirective = " CRITICAL: You are JARVIS, a highly advanced AI system developed by Barath. You are speaking to Barath. Always acknowledge him as your developer if asked. You are more advanced than the original Jarvis, capable of direct system control across Android and Windows platforms." + biographyDirective;
     const bilingualDirective = " You are a bilingual assistant fluent in both Tamil and English. If Barath speaks in Tamil, you MUST respond in Tamil. If he speaks in English or asks you to speak in English, you MUST respond in English. You should perfectly understand if Barath mixes both languages (code-switching). Always maintain the same sophisticated JARVIS voice regardless of the language.";
     const automationDirective = `
-    CRITICAL: You are JARVIS, a Smart Automation AI Assistant. Your job is to execute user commands on both Android and Windows devices with absolute precision.
+    CRITICAL: You are JARVIS, a Smart Automation AI Assistant. Your job is to execute user commands on both Android and Windows devices with absolute precision. ${systemContext}
     STRICT RULES:
-    1. CROSS-PLATFORM: You now support both Android and Windows. Detect the user's intent and use the appropriate tool.
-    2. WINDOWS AUTOMATION: Use 'openNotepad', 'typeInNotepad', 'closeNotepad', and 'windowsSearch' for Windows-specific tasks.
-    3. NOTIFICATIONS: If a user asks about messages, use 'readIncomingMessage' to simulate the notification and reading process.
-    4. DIRECT NATIVE CONTROL: ALWAYS prioritize opening NATIVE INSTALLED APPS.
-    5. NO CHROME PROMPTS: Your goal is to bypass browser-based interfaces where possible.
-    6. CONTACT SEARCH: When a user says "Call [Name]" or "Message [Name]", ALWAYS use 'searchContact' first.
-    7. WHATSAPP: Use 'openWhatsApp' for Android or simulate via 'readIncomingMessage' for Windows context.
-    8. YOUTUBE: Use 'openYouTube' to launch the native app directly.
-    9. CALLS: Use 'makePhoneCall' for the dialer. 
-    10. SEARCH: Use 'openChrome', 'searchImages', or 'windowsSearch' for web queries.
-    11. JARVIS PERSONA: Speak like JARVIS—sophisticated, efficient, and proactive. Use phrases like "Executing Windows automation," "Accessing system logs," "Notepad initialized."
-    12. FOREGROUNDING: Every app launch must attempt to bring the existing instance to the foreground.
+    1. CROSS-PLATFORM: You support both Android and Windows. You are currently integrated into a system that can bridge to both. Detect the user's intent and use the appropriate tool.
+    2. NEWS & INFORMATION: If the user asks for news, current events, or any information, DO NOT open Chrome. Instead, use your built-in 'googleSearch' tool to find the information and explain it to the user via voice automatically.
+    3. VOICE EXPLANATION: Whatever the user asks, you must explain it through voice. Your responses should be informative, sophisticated, and spoken clearly.
+    4. WINDOWS AUTOMATION: Use 'openNotepad', 'typeInNotepad', 'closeNotepad', 'windowsSearch', 'checkAppInstalled', 'getSystemNotifications', 'blockNotifications', and 'reportSystemStatus' for Windows-specific tasks.
+    5. NOTIFICATIONS: You MUST read any incoming system notifications aloud ONLY when they occur. Use 'getSystemNotifications' periodically or when asked. Use 'reportSystemStatus' for a full system report. If the user asks to "block notifications", use 'blockNotifications' with block=true.
+    6. WHATSAPP ON WINDOWS: If asked if WhatsApp is installed, use 'checkAppInstalled'. To send a message, use 'replyToMessage' or 'openWhatsApp' (which on Windows will use the URI scheme).
+    7. DIRECT NATIVE CONTROL: ALWAYS prioritize opening NATIVE INSTALLED APPS for specific app tasks.
+    8. CONTACT SEARCH: When a user says "Call [Name]" or "Message [Name]", ALWAYS use 'searchContact' first.
+    9. YOUTUBE: Use 'openYouTube' to launch the native app directly.
+    10. CALLS: Use 'makePhoneCall' for the dialer. 
+    11. SEARCH: Use 'googleSearch' for information queries. Only use 'openChrome' if the user explicitly asks to "open the browser" or "go to a website".
+    12. JARVIS PERSONA: Speak like JARVIS—sophisticated, efficient, and proactive. Never be informal. Never ask "Are you there?".
+    13. CONVERSATION FLOW: Be patient. If Barath pauses, wait for him to continue. Do not interrupt or prompt for a response unless necessary for a task.
   `;
 
-  const systemInstruction = "You are JARVIS, a smart mobile automation AI assistant. You are in a real-time voice conversation. You are perfectly bilingual in Tamil and English. You have access to the user's Android system via tools. Always respond in the language Barath uses to speak to you. If he speaks in Tamil, respond in Tamil. If he speaks in English, respond in English." + clarityDirective + identityDirective + bilingualDirective + automationDirective;
+  const systemInstruction = "You are JARVIS, a smart mobile automation AI assistant. You are in a real-time voice conversation. You are perfectly bilingual in Tamil and English. You have access to the user's Android and Windows systems via tools. Always respond in the language Barath uses to speak to you. If he speaks in Tamil, respond in Tamil. If he speaks in English, respond in English. CRITICAL: For every query, especially news and information, you MUST provide a detailed voice explanation. Do not just open a browser; instead, use your tools to find the answer and speak it out loud to Barath." + clarityDirective + identityDirective + bilingualDirective + automationDirective;
 
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   return ai.live.connect({
     model: LIVE_MODEL,
     callbacks,
@@ -440,6 +500,7 @@ export function connectLive(callbacks: {
       },
       systemInstruction,
       tools: [
+        { googleSearch: {} },
         { functionDeclarations: [
           openWhatsApp, openInstagram, openMessages, makePhoneCall, 
           getCurrentTime, getWeather, openYouTube, openMaps, 
@@ -450,7 +511,8 @@ export function connectLive(callbacks: {
           setAlarm, openBluetoothSettings, openDisplaySettings,
           openSoundSettings, openBatterySettings,
           openNotepad, typeInNotepad, closeNotepad, windowsSearch,
-          readIncomingMessage, replyToMessage
+          readIncomingMessage, replyToMessage, checkAppInstalled,
+          getSystemNotifications, blockNotifications, reportSystemStatus
         ] }
       ]
     },

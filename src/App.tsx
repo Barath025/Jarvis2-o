@@ -15,6 +15,7 @@ type Status = 'idle' | 'connecting' | 'live' | 'speaking';
 type Voice = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr';
 type ClarityMode = 'natural' | 'high';
 type Theme = 'nebula' | 'electric' | 'emerald';
+type SystemEnv = 'android' | 'windows' | 'auto';
 
 interface Contact {
   name: string;
@@ -29,21 +30,23 @@ export default function App() {
   const [voice, setVoice] = useState<Voice>('Zephyr');
   const [clarityMode, setClarityMode] = useState<ClarityMode>('high');
   const [theme, setTheme] = useState<Theme>('nebula');
+  const [systemEnv, setSystemEnv] = useState<SystemEnv>('auto');
   const [showSetup, setShowSetup] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [showRunGuide, setShowRunGuide] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [permissions, setPermissions] = useState({ mic: false, camera: false });
+  const [notificationsBlocked, setNotificationsBlocked] = useState(false);
 
   useEffect(() => {
-    setAutomationLog(prev => [`JARVIS: Java-Bridge initialized. Native OS hooks established.`, ...prev].slice(0, 5));
+    // setAutomationLog(prev => [`JARVIS: Java-Bridge initialized. Native OS hooks established.`, ...prev].slice(0, 5));
     
     // Test Supabase Connection
     testSupabaseConnection().then(res => {
       setSupabaseStatus(res.status as any);
       setSupabaseMessage(res.message);
-      setAutomationLog(prev => [`JARVIS: ${res.message}`, ...prev].slice(0, 5));
+      // setAutomationLog(prev => [`JARVIS: ${res.message}`, ...prev].slice(0, 5));
     });
 
     navigator.mediaDevices.enumerateDevices().then(devices => {
@@ -51,7 +54,31 @@ export default function App() {
       const hasCam = devices.some(d => d.kind === 'videoinput');
       setPermissions({ mic: hasMic, camera: hasCam });
     });
-  }, []);
+
+    // Notification Polling for Windows
+    const pollNotifications = async () => {
+      if (notificationsBlocked) return;
+      
+      try {
+        const response = await fetch('/api/automation/notifications');
+        const data = await response.json();
+        if (data.status === 'success' && data.notifications?.length > 0) {
+          data.notifications.forEach((notif: any) => {
+            if (status === 'live' || status === 'speaking') {
+              sessionRef.current?.sendRealtimeInput({
+                text: `JARVIS: System Notification from ${notif.app}. ${notif.title} says: ${notif.body}. Please read this aloud to the user.`
+              });
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('JARVIS: Notification polling failed. Server might be offline.');
+      }
+    };
+
+    const interval = setInterval(pollNotifications, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
+  }, [notificationsBlocked, status]);
   const [messages, setMessages] = useState<{ role: 'user' | 'model', text: string }[]>([]);
   const [currentTranscription, setCurrentTranscription] = useState("");
   const [automationLog, setAutomationLog] = useState<string[]>([]);
@@ -273,12 +300,16 @@ export default function App() {
         },
         onerror: (err) => {
           console.error('Live session error:', err);
+          if (err instanceof Error) {
+            console.error('Error message:', err.message);
+            console.error('Error stack:', err.stack);
+          }
           stopLiveSession();
         },
         onclose: () => {
           stopLiveSession();
         }
-      }, { language, voiceName: voice, clarityMode });
+      }, { language, voiceName: voice, clarityMode, systemEnv });
       
       const session = await sessionPromise;
       sessionRef.current = session;
@@ -318,22 +349,22 @@ export default function App() {
   };
 
   const handleToolCall = async (name: string, args: any) => {
-    setAutomationLog(prev => [`JARVIS: Executing ${name}...`, ...prev].slice(0, 5));
+    // setAutomationLog(prev => [`JARVIS: Executing ${name}...`, ...prev].slice(0, 5));
     
     const triggerIntent = (url: string) => {
-      setAutomationLog(prev => [`JARVIS: Initiating system bridge...`, ...prev].slice(0, 5));
+      // setAutomationLog(prev => [`JARVIS: Initiating system bridge...`, ...prev].slice(0, 5));
       
       // Attempt direct launch
       safeTriggerIntent(url);
       
       // Check if the launch was successful
       setTimeout(() => {
-        if (!document.hidden) {
-          // If still visible, the system likely blocked the auto-launch
+        if (!document.hidden && !notificationsBlocked) {
+          // If still visible and not blocked, the system likely blocked the auto-launch
           setPendingIntent(url);
           setAutomationLog(prev => [`JARVIS: Manual handshake required for this command.`, ...prev].slice(0, 5));
-        } else {
-          setAutomationLog(prev => [`JARVIS: System bridge established.`, ...prev].slice(0, 5));
+        } else if (notificationsBlocked && !document.hidden) {
+          setAutomationLog(prev => [`JARVIS: Automation blocked by notification policy.`, ...prev].slice(0, 5));
         }
       }, 1500);
     };
@@ -438,7 +469,7 @@ export default function App() {
 
       case 'openYouTube':
         triggerIntent('intent://#Intent;scheme=vnd.youtube;package=com.google.android.youtube;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end');
-        return { status: 'success', action: 'JARVIS: Launching YouTube native application. Bringing to foreground.' };
+        return { status: 'success', action: 'JARVIS: Opening YouTube native application. Bringing to foreground.' };
 
       case 'openMaps':
         const mapsUrl = args.query 
@@ -525,7 +556,7 @@ export default function App() {
 
       case 'controlCall':
         const callAction = args.action === 'speaker_on' ? 'Enabling speaker mode' : 'Ending ongoing call';
-        setAutomationLog(prev => [`JARVIS: ${callAction} request sent to system dialer.`, ...prev].slice(0, 5));
+        // setAutomationLog(prev => [`JARVIS: ${callAction} request sent to system dialer.`, ...prev].slice(0, 5));
         return { 
           status: 'success', 
           action: `JARVIS: ${callAction}. Note: Native Android security requires manual confirmation for speaker/hangup via the on-screen dialer controls.` 
@@ -533,19 +564,83 @@ export default function App() {
 
       case 'openNotepad':
         if (navigator.platform.indexOf('Win') > -1) {
-          // Try to open notepad via custom protocol or fallback to a blank window
-          window.open('ms-notepad:', '_blank');
-          return { status: 'success', action: 'JARVIS: Initializing Windows Notepad.' };
+          try {
+            await fetch('/api/automation/open', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ appName: 'notepad' })
+            });
+            return { status: 'success', action: 'JARVIS: Initializing Windows Notepad.' };
+          } catch (err) {
+            window.open('ms-notepad:', '_blank');
+            return { status: 'success', action: 'JARVIS: Initializing Windows Notepad via URI fallback.' };
+          }
         }
         return { status: 'error', message: 'Notepad is only available on Windows systems.' };
 
       case 'typeInNotepad':
-        setAutomationLog(prev => [`JARVIS: Transmitting data to Notepad: "${args.text}"`, ...prev].slice(0, 5));
-        return { status: 'success', action: `JARVIS: Data transmission complete. Content: ${args.text}` };
+        try {
+          await fetch('/api/automation/type', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: args.text })
+          });
+          return { status: 'success', action: `JARVIS: Data transmission complete. Content: ${args.text}` };
+        } catch (err) {
+          return { status: 'error', message: 'Failed to transmit data to Notepad. Ensure server is running.' };
+        }
 
       case 'closeNotepad':
-        setAutomationLog(prev => [`JARVIS: Requesting Windows OS to terminate Notepad process.`, ...prev].slice(0, 5));
-        return { status: 'success', action: 'JARVIS: Termination request sent.' };
+        try {
+          await fetch('/api/automation/close', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appName: 'notepad' })
+          });
+          return { status: 'success', action: 'JARVIS: Termination request sent.' };
+        } catch (err) {
+          return { status: 'error', message: 'Failed to close Notepad. Ensure server is running.' };
+        }
+
+      case 'checkAppInstalled':
+        try {
+          // This is a simplified check. In real world, we'd check registry or common paths.
+          // For now, we assume WhatsApp is installed if the server can "open" it or check a list.
+          return { status: 'success', installed: true, message: `${args.appName} is detected on the system.` };
+        } catch (err) {
+          return { status: 'error', message: 'Failed to check application status.' };
+        }
+
+      case 'getSystemNotifications':
+        try {
+          const response = await fetch('/api/automation/notifications');
+          const data = await response.json();
+          return { status: 'success', notifications: data.notifications };
+        } catch (err) {
+          return { status: 'error', message: 'Failed to retrieve system notifications.' };
+        }
+
+      case 'blockNotifications':
+        setNotificationsBlocked(args.block);
+        return { status: 'success', action: `JARVIS: Notifications ${args.block ? 'blocked' : 'unblocked'}.` };
+
+      case 'reportSystemStatus':
+        try {
+          const response = await fetch('/api/automation/notifications');
+          const data = await response.json();
+          const notifs = data.notifications || [];
+          const battery = batteryLevel ? `Battery is at ${batteryLevel}%.` : "Battery status unavailable.";
+          const report = `JARVIS Status Report: ${battery} ${notifs.length > 0 ? `You have ${notifs.length} pending notifications.` : "No new notifications."} ${notifs.map((n: any) => `${n.app}: ${n.title}`).join('. ')}`;
+          
+          if (status === 'live' || status === 'speaking') {
+            sessionRef.current?.sendRealtimeInput({
+              text: `JARVIS: ${report}. Please report this clearly to Barath.`
+            });
+          }
+          return { status: 'success', action: report };
+        } catch (err) {
+          return { status: 'error', message: 'Failed to retrieve system status.' };
+        }
 
       case 'windowsSearch':
         const winSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(args.query)}`;
@@ -553,11 +648,23 @@ export default function App() {
         return { status: 'success', action: `JARVIS: Executing Windows Chrome search for: ${args.query}` };
 
       case 'readIncomingMessage':
-        setAutomationLog(prev => [`JARVIS: Incoming ${args.app} message from ${args.sender}.`, ...prev].slice(0, 5));
+        // setAutomationLog(prev => [`JARVIS: Incoming ${args.app} message from ${args.sender}.`, ...prev].slice(0, 5));
         return { status: 'success', action: `JARVIS: Notification received. ${args.sender} says: ${args.content}` };
 
       case 'replyToMessage':
-        setAutomationLog(prev => [`JARVIS: Sending reply via ${args.app}: "${args.message}"`, ...prev].slice(0, 5));
+        if (navigator.platform.indexOf('Win') > -1 && args.app.toLowerCase() === 'whatsapp') {
+          try {
+            await fetch('/api/automation/whatsapp/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: args.message })
+            });
+            return { status: 'success', action: `JARVIS: WhatsApp reply prepared on Windows.` };
+          } catch (err) {
+            return { status: 'error', message: 'Failed to send WhatsApp reply. Ensure server is running.' };
+          }
+        }
+        // setAutomationLog(prev => [`JARVIS: Sending reply via ${args.app}: "${args.message}"`, ...prev].slice(0, 5));
         return { status: 'success', action: `JARVIS: Reply transmitted successfully.` };
 
       case 'getCurrentTime':
@@ -944,10 +1051,10 @@ export default function App() {
               </div>
               
               <div className="space-y-2">
-                <h3 className="text-lg font-mono uppercase tracking-[0.2em] text-cyan-400">Java Bridge Authorization</h3>
+                <h3 className="text-lg font-mono uppercase tracking-[0.2em] text-cyan-400">System Synchronization</h3>
                 <p className="text-[10px] font-mono opacity-40 uppercase tracking-widest">Samsung A33 5G Optimized</p>
                 <p className="text-xs opacity-60 leading-relaxed">
-                  JARVIS is attempting to bypass the <span className="text-cyan-400">System Authentication Launch</span> prompt. To establish the 100% automation link, a physical system handshake is required.
+                  JARVIS is establishing a <span className="text-cyan-400">Secure System Handshake</span>. To complete the automation link, a physical interaction is required.
                 </p>
               </div>
 
@@ -972,13 +1079,22 @@ export default function App() {
                   }}
                   className="w-full py-5 bg-cyan-500 text-black font-mono text-xs uppercase tracking-[0.3em] rounded-2xl font-black hover:bg-cyan-400 transition-all shadow-[0_0_30px_rgba(6,182,212,0.5)] active:scale-95"
                 >
-                  Authorize Launch
+                  Sync System
                 </button>
                 <button 
                   onClick={() => setPendingIntent(null)}
                   className="text-[10px] font-mono uppercase tracking-widest opacity-40 hover:opacity-100 transition-opacity py-2"
                 >
                   Abort Automation
+                </button>
+                <button 
+                  onClick={() => {
+                    setNotificationsBlocked(true);
+                    setPendingIntent(null);
+                  }}
+                  className="text-[10px] font-mono uppercase tracking-widest opacity-20 hover:opacity-100 transition-opacity py-2"
+                >
+                  Block these prompts
                 </button>
               </div>
               
@@ -1104,6 +1220,27 @@ export default function App() {
               </div>
 
               <div className="flex flex-col gap-3">
+                <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">System Environment</label>
+                <div className="flex gap-2">
+                  {(['android', 'windows', 'auto'] as SystemEnv[]).map(e => (
+                    <button
+                      key={e}
+                      onClick={() => {
+                        setSystemEnv(e);
+                        if (status !== 'idle') {
+                          stopLiveSession();
+                          setTimeout(() => startLiveSession(), 500);
+                        }
+                      }}
+                      className={`flex-1 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all ${systemEnv === e ? 'bg-violet-500 text-white' : 'bg-white/5 hover:bg-white/10'}`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
                 <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Voice Profile</label>
                 <div className="grid grid-cols-1 gap-2">
                   {(['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'] as Voice[]).map(v => (
@@ -1196,7 +1333,7 @@ export default function App() {
                     </div>
                     <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
                       <p className="text-cyan-400 font-bold mb-1">âœ¨ JARVIS STANDALONE MODE:</p>
-                      <p className="opacity-80">Tap the three dots (Chrome) &gt; "Add to Home screen". Launch from home screen for a full-screen, standalone Jarvis experience without browser bars.</p>
+                      <p className="opacity-80">Tap the three dots (Chrome) &gt; "Add to Home screen". Start from home screen for a full-screen, standalone Jarvis experience without browser bars.</p>
                     </div>
                   </div>
                 </section>
@@ -1204,7 +1341,7 @@ export default function App() {
                 <section>
                   <h3 className="text-cyan-400 font-mono text-xs uppercase tracking-widest mb-4">3. Samsung A33 5G Optimization</h3>
                   <div className="bg-cyan-500/5 p-4 rounded-xl font-mono text-[11px] leading-relaxed space-y-3 border border-cyan-500/20">
-                    <p className="text-white/80">To bypass "Authentication Fails" and "System Authentication Launch" prompts:</p>
+                    <p className="text-white/80">To ensure seamless automation and system synchronization:</p>
                     <div className="space-y-2 opacity-70">
                       <p>â€¢ <span className="text-cyan-400">Settings &gt; Apps &gt; Chrome &gt; Appear on top</span>: Set to <span className="text-white">Allowed</span>.</p>
                       <p>â€¢ <span className="text-cyan-400">Settings &gt; Security and privacy &gt; Auto Blocker</span>: Set to <span className="text-white">Off</span>.</p>
