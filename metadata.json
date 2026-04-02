@@ -1,6 +1,6 @@
 {
-  "name": "JavaScript Developed Bharat",
-  "description": "A highly advanced JARVIS-themed voice assistant developed by Bharat, capable of Android and Windows system control.",
+  "name": "Developed Barath",
+  "description": "A highly advanced JARVIS-themed voice assistant developed by Barath, capable of Android and Windows system control.",
   "requestFramePermissions": [
     "microphone",
     "camera",

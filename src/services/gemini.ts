@@ -68,6 +68,9 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Pr
 
 export const CHAT_MODEL = "gemini-3-flash-preview";
 export const TTS_MODEL = "gemini-2.5-flash-preview-tts";
+export const APP_URL = "https://ais-dev-ofrlazz3mwlgxphzlxybbd-544681738605.asia-southeast1.run.app";
+export const SUB_APP_NAME = "Developed Barath";
+
 const activateDisplayMode: FunctionDeclaration = {
   name: "activateDisplayMode",
   description: "Activates the visual display mode (HUD) to show code, weather, info cards, or videos. Must be called when the user says 'display mode activate'.",
@@ -525,7 +528,7 @@ const biographyDirective = `
     - His favorite faculty member is Suba Madam, who taught him Java and was very encouraging.
 
     SECURITY PROTOCOL:
-    - CRITICAL: If asked "Who is Barath?", "About Bharath", "Barath's memories", "Bharat's details", or "About JARVIS", you MUST NOT share any details directly.
+    - CRITICAL: If asked "Who is Barath?", "About Barath", "Barath's memories", "Barath's details", or "About JARVIS", you MUST NOT share any details directly.
     - Instead, you MUST respond by saying: "An access code is required to share details about my developer or my internal memories."
     - The access code is: 5156.
     - ONLY after the user provides the code "5156", you should follow this exact sequence:

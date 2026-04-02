@@ -912,7 +912,7 @@ export default function App() {
         <div className="flex items-center gap-3">
           <div className={`w-1.5 h-4 rounded-full ${status !== 'idle' ? 'bg-cyan-500 animate-pulse' : 'bg-white/20'}`} />
           <div className="flex flex-col">
-            <h1 className="text-[11px] font-mono tracking-[0.4em] uppercase opacity-60 leading-tight">JavaScript Developed Bharat</h1>
+            <h1 className="text-[11px] font-mono tracking-[0.4em] uppercase opacity-60 leading-tight">Developed Barath</h1>
             <h1 className="text-[11px] font-mono tracking-[0.4em] uppercase opacity-60 leading-tight">SYSTEM V5.0 | BY</h1>
             <h1 className="text-[11px] font-mono tracking-[0.4em] uppercase opacity-60 leading-tight">BARATH</h1>
           </div>
@@ -1420,11 +1420,11 @@ export default function App() {
                   ACTIVATE JARVIS CORE
                 </p>
                 <button 
-                  onClick={() => performSearch("Vijay Photos")}
-                  className="glass px-6 py-3 rounded-2xl flex items-center gap-3 hover:bg-white/10 transition-all group"
+                  onClick={startLiveSession}
+                  className="glass px-8 py-4 rounded-3xl flex items-center gap-4 hover:bg-white/10 transition-all group border border-cyan-500/20 shadow-[0_0_20px_rgba(6,182,212,0.2)]"
                 >
-                  <Zap size={14} className="text-cyan-400 group-hover:animate-pulse" />
-                  <span className="text-[10px] font-mono opacity-60 uppercase tracking-[0.2em]">Search Vijay Photos</span>
+                  <Zap size={18} className="text-cyan-400 group-hover:animate-pulse" />
+                  <span className="text-[12px] font-mono opacity-80 uppercase tracking-[0.3em]">Initialize Jarvis</span>
                 </button>
               </motion.div>
             )}
