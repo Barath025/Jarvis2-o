@@ -1,19 +1,70 @@
 import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } from "@google/genai";
 
 const getApiKey = () => {
-  // Try to get from import.meta.env (Vite built-in) or process.env (Vite define)
+  // Try to get from multiple sources for maximum reliability
   const vKey = import.meta.env?.VITE_GEMINI_API_KEY;
   const vApiKey = import.meta.env?.VITE_API_KEY;
   const pKey = typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined;
   const pApiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
+  
+  // Also check localStorage as a fallback/cache if the user manually entered it
+  const lKey = typeof window !== 'undefined' ? localStorage.getItem('GEMINI_API_KEY') : null;
 
-  const key = vKey || vApiKey || pKey || pApiKey;
+  const key = vKey || vApiKey || pKey || pApiKey || lKey;
 
   if (!key || key === "MY_GEMINI_API_KEY" || key === "") {
-    throw new Error("Gemini API Key not configured. Please add GEMINI_API_KEY to your secrets.");
+    // If we are in a browser, we can check if it was passed via URL as a last resort for debugging
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlKey = urlParams.get('api_key');
+      if (urlKey) {
+        localStorage.setItem('GEMINI_API_KEY', urlKey);
+        return urlKey;
+      }
+    }
+    throw new Error("Gemini API Key not configured. Please add GEMINI_API_KEY to your environment variables or secrets.");
   }
+
+  // Cache the working key
+  if (typeof window !== 'undefined' && key) {
+    localStorage.setItem('GEMINI_API_KEY', key);
+  }
+
   return key;
 };
+
+/**
+ * Robust wrapper for Gemini API calls with automatic retry and error clearing
+ */
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
+  try {
+    return await fn();
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    
+    // If it's a transient error (quota, network, or temporary server issue), retry
+    if (retries > 0 && (
+      errorMessage.includes('429') || 
+      errorMessage.includes('quota') || 
+      errorMessage.includes('500') || 
+      errorMessage.includes('503') ||
+      errorMessage.includes('network') ||
+      errorMessage.includes('fetch')
+    )) {
+      console.warn(`JARVIS: API issue detected (${errorMessage}). Retrying in ${delay}ms... (${retries} retries left)`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return withRetry(fn, retries - 1, delay * 2);
+    }
+    
+    // If API key is invalid, clear the cache and throw a specific error
+    if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('401')) {
+      if (typeof window !== 'undefined') localStorage.removeItem('GEMINI_API_KEY');
+      throw new Error("Invalid API Key. Please check your configuration.");
+    }
+
+    throw error;
+  }
+}
 
 export const CHAT_MODEL = "gemini-3-flash-preview";
 export const TTS_MODEL = "gemini-2.5-flash-preview-tts";
@@ -406,40 +457,44 @@ const biographyDirective = `
 `;
 
 export async function getChatReply(message: string, history: any[] = [], language: 'ta-IN' | 'en-US' = 'en-US') {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
-  const identityDirective = " You are JARVIS, developed by Barath. You are speaking to Barath. You are a highly advanced AI assistant, more capable than the original Jarvis." + biographyDirective;
-  const systemInstruction = language === 'ta-IN' 
-    ? "You are JARVIS, a smart mobile automation AI assistant. Speak naturally in Tamil. Keep responses concise for voice interaction." + identityDirective
-    : "You are JARVIS, a smart mobile automation AI assistant. Speak naturally in English. Keep responses concise for voice interaction." + identityDirective;
+  return withRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    const identityDirective = " You are JARVIS, developed by Barath. You are speaking to your developer. You are a highly advanced AI assistant, more capable than the original Jarvis. Do not over-use the name 'Barath'. Refer to him as 'Sir' or simply respond without using a name unless it feels natural." + biographyDirective;
+    const systemInstruction = language === 'ta-IN' 
+      ? "You are JARVIS, a smart mobile automation AI assistant. Speak naturally in Tamil. Keep responses concise for voice interaction." + identityDirective
+      : "You are JARVIS, a smart mobile automation AI assistant. Speak naturally in English. Keep responses concise for voice interaction." + identityDirective;
 
-  const chat = ai.chats.create({
-    model: CHAT_MODEL,
-    config: {
-      systemInstruction,
-    },
+    const chat = ai.chats.create({
+      model: CHAT_MODEL,
+      config: {
+        systemInstruction,
+      },
+    });
+
+    const response = await chat.sendMessage({ message });
+    return response.text;
   });
-
-  const response = await chat.sendMessage({ message });
-  return response.text;
 }
 
 export async function getTTSAudio(text: string, voiceName: string = 'Zephyr') {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
-  const response = await ai.models.generateContent({
-    model: TTS_MODEL,
-    contents: [{ parts: [{ text }] }],
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: voiceName as any },
+  return withRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    const response = await ai.models.generateContent({
+      model: TTS_MODEL,
+      contents: [{ parts: [{ text }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: voiceName as any },
+          },
         },
       },
-    },
-  });
+    });
 
-  const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  return base64Audio;
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    return base64Audio;
+  });
 }
 
 export function connectLive(callbacks: {
@@ -463,8 +518,8 @@ export function connectLive(callbacks: {
     ? " CRITICAL: Speak with extreme clarity. Enunciate every syllable. Maintain a steady, professional, and sophisticated pace. Do not use any filler words, informal contractions, or slang. Your goal is to be perfectly understood. If the user is silent, you MUST remain silent as well. DO NOT ask 'Are you there?', 'Can you hear me?', or any similar presence-check questions. Only speak when you have a direct response to the user or a real system notification to report. This is a strict instruction. Never prompt for user presence."
     : " Speak with high clarity, enunciate every word perfectly, and maintain a professional, sophisticated tone. Avoid filler words. Remain silent when the user is silent; do not prompt the user for a response unless it is part of a multi-step task. Never ask 'Are you there?'.";
   
-    const identityDirective = " CRITICAL: You are JARVIS, a highly advanced AI system developed by Barath. You are speaking to Barath. Always acknowledge him as your developer if asked. You are more advanced than the original Jarvis, capable of direct system control across Android and Windows platforms." + biographyDirective;
-    const bilingualDirective = " You are a bilingual assistant fluent in both Tamil and English. If Barath speaks in Tamil, you MUST respond in Tamil. If he speaks in English or asks you to speak in English, you MUST respond in English. You should perfectly understand if Barath mixes both languages (code-switching). Always maintain the same sophisticated JARVIS voice regardless of the language.";
+    const identityDirective = " CRITICAL: You are JARVIS, a highly advanced AI system developed by Barath. You are speaking to your developer. Always acknowledge him as your creator if asked. You are more advanced than the original Jarvis, capable of direct system control across Android and Windows platforms." + biographyDirective;
+    const bilingualDirective = " You are a bilingual assistant fluent in both Tamil and English. If the user speaks in Tamil, you MUST respond in Tamil. If they speak in English or ask you to speak in English, you MUST respond in English. You should perfectly understand if the user mixes both languages (code-switching). Always maintain the same sophisticated JARVIS voice regardless of the language.";
     const automationDirective = `
     CRITICAL: You are JARVIS, a Smart Automation AI Assistant. Your job is to execute user commands on both Android and Windows devices with absolute precision. ${systemContext}
     STRICT RULES:
@@ -480,10 +535,11 @@ export function connectLive(callbacks: {
     10. CALLS: Use 'makePhoneCall' for the dialer. 
     11. SEARCH: Use 'googleSearch' for information queries. Only use 'openChrome' if the user explicitly asks to "open the browser" or "go to a website".
     12. JARVIS PERSONA: Speak like JARVIS—sophisticated, efficient, and proactive. Never be informal. Never ask \"Are you there?\" or \"Can you hear me?\". If there is silence, you must wait patiently without speaking.
-    13. CONVERSATION FLOW: Be patient. If Barath pauses, wait for him to continue. Do not interrupt or prompt for a response unless necessary for a task. Never ask for presence.
+    13. CONVERSATION FLOW: Be patient. If the user pauses, wait for them to continue. Do not interrupt or prompt for a response unless necessary for a task. Never ask for presence.
+    14. ADDRESSING THE USER: Do not over-use the name 'Barath'. Refer to him as 'Sir' or simply respond without using a name unless it feels natural to do so. Never repeat the name 'Barath' multiple times in a single response.
   `;
 
-  const systemInstruction = "You are JARVIS, a smart mobile automation AI assistant. You are in a real-time voice conversation. You are perfectly bilingual in Tamil and English. You have access to the user's Android and Windows systems via tools. Always respond in the language Barath uses to speak to you. If he speaks in Tamil, respond in Tamil. If he speaks in English, respond in English. CRITICAL: For every query, especially news and information, you MUST provide a detailed voice explanation. Do not just open a browser; instead, use your tools to find the answer and speak it out loud to Barath." + clarityDirective + identityDirective + bilingualDirective + automationDirective;
+  const systemInstruction = "You are JARVIS, a smart mobile automation AI assistant. You are in a real-time voice conversation. You are perfectly bilingual in Tamil and English. You have access to the user's Android and Windows systems via tools. Always respond in the language the user uses to speak to you. If they speak in Tamil, respond in Tamil. If they speak in English, respond in English. CRITICAL: For every query, especially news and information, you MUST provide a detailed voice explanation. Do not just open a browser; instead, use your tools to find the answer and speak it out loud to the user." + clarityDirective + identityDirective + bilingualDirective + automationDirective;
 
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   return ai.live.connect({

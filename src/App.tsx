@@ -36,6 +36,7 @@ export default function App() {
   const [showRunGuide, setShowRunGuide] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [automationServerUrl, setAutomationServerUrl] = useState('http://localhost:3000');
   const [permissions, setPermissions] = useState({ mic: false, camera: false });
   const [notificationsBlocked, setNotificationsBlocked] = useState(false);
 
@@ -60,7 +61,7 @@ export default function App() {
       if (notificationsBlocked) return;
       
       try {
-        const response = await fetch('/api/automation/notifications');
+        const response = await fetch(`${automationServerUrl}/api/automation/notifications`);
         const data = await response.json();
         if (data.status === 'success' && data.notifications?.length > 0) {
           data.notifications.forEach((notif: any) => {
@@ -565,7 +566,7 @@ export default function App() {
       case 'openNotepad':
         if (navigator.platform.indexOf('Win') > -1) {
           try {
-            await fetch('/api/automation/open', {
+            await fetch(`${automationServerUrl}/api/automation/open`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ appName: 'notepad' })
@@ -580,7 +581,7 @@ export default function App() {
 
       case 'typeInNotepad':
         try {
-          await fetch('/api/automation/type', {
+          await fetch(`${automationServerUrl}/api/automation/type`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: args.text })
@@ -592,7 +593,7 @@ export default function App() {
 
       case 'closeNotepad':
         try {
-          await fetch('/api/automation/close', {
+          await fetch(`${automationServerUrl}/api/automation/close`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ appName: 'notepad' })
@@ -613,7 +614,7 @@ export default function App() {
 
       case 'getSystemNotifications':
         try {
-          const response = await fetch('/api/automation/notifications');
+          const response = await fetch(`${automationServerUrl}/api/automation/notifications`);
           const data = await response.json();
           return { status: 'success', notifications: data.notifications };
         } catch (err) {
@@ -626,7 +627,7 @@ export default function App() {
 
       case 'reportSystemStatus':
         try {
-          const response = await fetch('/api/automation/notifications');
+          const response = await fetch(`${automationServerUrl}/api/automation/notifications`);
           const data = await response.json();
           const notifs = data.notifications || [];
           const battery = batteryLevel ? `Battery is at ${batteryLevel}%.` : "Battery status unavailable.";
@@ -654,7 +655,7 @@ export default function App() {
       case 'replyToMessage':
         if (navigator.platform.indexOf('Win') > -1 && args.app.toLowerCase() === 'whatsapp') {
           try {
-            await fetch('/api/automation/whatsapp/send', {
+            await fetch(`${automationServerUrl}/api/automation/whatsapp/send`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ message: args.message })
@@ -1202,6 +1203,18 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Automation Server URL</label>
+                <input
+                  type="text"
+                  value={automationServerUrl}
+                  onChange={(e) => setAutomationServerUrl(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs font-mono focus:outline-none focus:border-violet-500/50 transition-all"
+                  placeholder="http://localhost:3000"
+                />
+                <p className="text-[9px] opacity-30 italic">Point this to your local JARVIS server for Windows automation.</p>
               </div>
 
               <div className="flex flex-col gap-3">
