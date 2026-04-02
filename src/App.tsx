@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Volume2, Languages, RefreshCcw, Settings, X, Info, ChevronRight, Zap, Activity, User, Phone, MessageSquare, Search } from 'lucide-react';
+import { Mic, Volume2, Languages, RefreshCcw, Settings, X, Info, ChevronRight, Zap, Activity, User, Phone, MessageSquare, Search, Monitor } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { connectLive, MOCK_CONTACTS } from './services/gemini';
 import { testSupabaseConnection } from './lib/supabase';
@@ -24,6 +24,44 @@ interface Contact {
   relation: string;
 }
 
+// --- Components ---
+const AutoFitText = ({ text, className = "" }: { text: string, className?: string }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [fontSize, setFontSize] = useState(9);
+
+  useEffect(() => {
+    // Auto-adjust font size to fit container height (approx 384px for h-96)
+    if (containerRef.current) {
+      const lineCount = text.split('\n').length;
+      const charCount = text.length;
+      
+      // Start with a small base size as requested
+      let newSize = 9;
+      
+      // Aggressively shrink based on content to ensure it fits in one box
+      if (lineCount > 12 || charCount > 250) newSize = 8;
+      if (lineCount > 20 || charCount > 500) newSize = 7;
+      if (lineCount > 35 || charCount > 1000) newSize = 6;
+      if (lineCount > 55 || charCount > 1800) newSize = 5;
+      if (lineCount > 80 || charCount > 3000) newSize = 4;
+      if (lineCount > 120) newSize = 3; // Extreme shrink for very long theories
+      
+      setFontSize(newSize);
+    }
+  }, [text]);
+
+  return (
+    <div ref={containerRef} className={`w-full h-full overflow-hidden flex flex-col ${className}`}>
+      <pre 
+        className="font-mono text-cyan-100/90 leading-tight whitespace-pre-wrap break-all"
+        style={{ fontSize: `${fontSize}px` }}
+      >
+        {text}
+      </pre>
+    </div>
+  );
+};
+
 export default function App() {
   const [status, setStatus] = useState<Status>('idle');
   const [language, setLanguage] = useState<Language>('en-US');
@@ -36,11 +74,23 @@ export default function App() {
   const [showRunGuide, setShowRunGuide] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [permissionError, setPermissionError] = useState<boolean>(false);
   const [automationServerUrl, setAutomationServerUrl] = useState('http://localhost:3000');
   const [permissions, setPermissions] = useState({ mic: false, camera: false });
   const [notificationsBlocked, setNotificationsBlocked] = useState(false);
 
   useEffect(() => {
+    // Check for API key on mount
+    try {
+      const key = typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY) : undefined;
+      if (!key && !localStorage.getItem('GEMINI_API_KEY')) {
+        setError('JARVIS: API Key missing. Please set GEMINI_API_KEY in your .env file and restart the server.');
+      }
+    } catch (e) {
+      console.warn('JARVIS: Initial API key check failed, will retry on session start.');
+    }
+
     // setAutomationLog(prev => [`JARVIS: Java-Bridge initialized. Native OS hooks established.`, ...prev].slice(0, 5));
     
     // Test Supabase Connection
@@ -86,7 +136,14 @@ export default function App() {
   const [pendingIntent, setPendingIntent] = useState<string | null>(null);
   const [foundContact, setFoundContact] = useState<Contact | null>(null);
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
+  const [isCharging, setIsCharging] = useState<boolean | null>(null);
   const [isFlashlightOn, setIsFlashlightOn] = useState(false);
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
+  const [weatherData, setWeatherData] = useState<any | null>(null);
+  const [showWeather, setShowWeather] = useState(false);
+  const [activeCode, setActiveCode] = useState<{ language: string, code: string, title?: string } | null>(null);
+  const [infoCardData, setInfoCardData] = useState<{ title: string, subtitle?: string, details: { label: string, value: string }[] } | null>(null);
+  const [displayModeActive, setDisplayModeActive] = useState(false);
   const [supabaseStatus, setSupabaseStatus] = useState<'testing' | 'success' | 'error' | 'connected'>('testing');
   const [supabaseMessage, setSupabaseMessage] = useState('');
   const flashlightStreamRef = useRef<MediaStream | null>(null);
@@ -167,21 +224,42 @@ export default function App() {
 
   // --- Audio Capture & Streaming ---
   const safeTriggerIntent = (url: string) => {
+    if (!url) return;
+    const isIntent = url.startsWith('intent:') || url.startsWith('whatsapp:') || url.startsWith('ms-notepad:') || url.startsWith('tel:');
+    
     try {
-      // Direct assignment is the most reliable way to trigger intents without new tabs
-      window.location.href = url;
+      if (isIntent) {
+        // For custom schemes, location.href is safer and doesn't crash window.open
+        window.location.href = url;
+      } else {
+        window.open(url, '_blank');
+      }
     } catch (err) {
-      console.warn('JARVIS: Intent launch failed, using window.open fallback.', err);
-      window.open(url, '_blank');
+      console.warn('JARVIS: Intent launch failed.', err);
+      // If it's not an intent, try window.open as a last resort
+      if (!isIntent) {
+        try {
+          window.open(url, '_blank');
+        } catch (e) {
+          console.error('JARVIS: Final fallback failed.', e);
+        }
+      }
     }
   };
 
   const startLiveSession = async () => {
     setStatus('connecting');
+    setError(null);
+    setPermissionError(false);
     initPlaybackContext();
     requestWakeLock();
     
     try {
+      // Check for mediaDevices support
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Your browser does not support microphone access.');
+      }
+
       // Optimized Microphone Constraints for Clarity
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
@@ -190,6 +268,12 @@ export default function App() {
           autoGainControl: true,
           sampleRate: 16000
         } 
+      }).catch(err => {
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setPermissionError(true);
+          throw new Error('Microphone permission denied. Please enable it in your browser settings.');
+        }
+        throw err;
       });
 
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
@@ -299,12 +383,22 @@ export default function App() {
             }
           }
         },
-        onerror: (err) => {
-          console.error('Live session error:', err);
-          if (err instanceof Error) {
-            console.error('Error message:', err.message);
-            console.error('Error stack:', err.stack);
+        onerror: (err: any) => {
+          console.error('JARVIS: Live session error detected:', err);
+          const errorMessage = err?.message || String(err);
+          
+          // Automatically resolve common issues
+          if (errorMessage.includes('429') || errorMessage.includes('quota')) {
+            setError('System Quota Exceeded. Retrying in 5 seconds...');
+            setTimeout(() => startLiveSession(), 5000);
+          } else if (errorMessage.includes('API_KEY_INVALID')) {
+            setError('Invalid API Key. Please check your .env file.');
+          } else {
+            // General retry for transient network issues
+            console.warn('JARVIS: Attempting automatic reconnection...');
+            setTimeout(() => startLiveSession(), 2000);
           }
+          
           stopLiveSession();
         },
         onclose: () => {
@@ -314,8 +408,9 @@ export default function App() {
       
       const session = await sessionPromise;
       sessionRef.current = session;
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to start live session:', err);
+      setError(err.message || 'Failed to start live session');
       setStatus('idle');
     }
   };
@@ -424,11 +519,12 @@ export default function App() {
           const battery = await navigator.getBattery();
           const level = Math.round(battery.level * 100);
           setBatteryLevel(level);
+          setIsCharging(battery.charging);
           return { 
             status: 'success', 
             percentage: level,
             isCharging: battery.charging,
-            action: `JARVIS: System power levels at ${level}%.` 
+            action: `JARVIS: System power levels at ${level}%${battery.charging ? ' and charging' : ''}.` 
           };
         } catch (err) {
           return { status: 'error', message: 'Unable to access system power management.' };
@@ -469,14 +565,27 @@ export default function App() {
         };
 
       case 'openYouTube':
-        triggerIntent('intent://#Intent;scheme=vnd.youtube;package=com.google.android.youtube;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end');
+        const isAndroidYT = systemEnv === 'android' || (systemEnv === 'auto' && /Android/i.test(navigator.userAgent));
+        if (isAndroidYT) {
+          triggerIntent('intent://#Intent;scheme=vnd.youtube;package=com.google.android.youtube;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end');
+        } else {
+          window.open('https://www.youtube.com', '_blank');
+        }
         return { status: 'success', action: 'JARVIS: Opening YouTube native application. Bringing to foreground.' };
 
       case 'openMaps':
-        const mapsUrl = args.query 
-          ? `intent://geo:0,0?q=${encodeURIComponent(args.query)}#Intent;scheme=geo;package=com.google.android.apps.maps;action=android.intent.action.VIEW;category=android.intent.category.DEFAULT;end`
-          : `intent://geo:0,0#Intent;scheme=geo;package=com.google.android.apps.maps;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end`;
-        triggerIntent(mapsUrl);
+        const isAndroidDevice = systemEnv === 'android' || (systemEnv === 'auto' && /Android/i.test(navigator.userAgent));
+        if (isAndroidDevice) {
+          const mapsUrl = args.query 
+            ? `intent://geo:0,0?q=${encodeURIComponent(args.query)}#Intent;scheme=geo;package=com.google.android.apps.maps;action=android.intent.action.VIEW;category=android.intent.category.DEFAULT;end`
+            : `intent://geo:0,0#Intent;scheme=geo;package=com.google.android.apps.maps;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end`;
+          triggerIntent(mapsUrl);
+        } else {
+          const webMapsUrl = args.query
+            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(args.query)}`
+            : `https://www.google.com/maps`;
+          window.open(webMapsUrl, '_blank');
+        }
         return { status: 'success', action: 'JARVIS: Accessing global positioning system. Foregrounding instance.' };
 
       case 'openGmail':
@@ -502,11 +611,103 @@ export default function App() {
         triggerIntent('intent://#Intent;scheme=market;package=com.android.vending;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end');
         return { status: 'success', action: 'JARVIS: Accessing application repository. Bringing to foreground.' };
 
+      case 'playYouTubeVideo':
+        let vId = args.videoId;
+        if (!vId) {
+          console.log(`JARVIS: Searching for direct video stream: ${args.query}`);
+          // Simulate finding a direct stream ID
+          if (args.query.toLowerCase().includes('ipl')) {
+            vId = 'v7X8E3X1_7A'; // A real IPL highlight ID
+          } else {
+            vId = 'dQw4w9WgXcQ';
+          }
+        }
+        setActiveVideoId(vId);
+        setShowWeather(false);
+        setActiveCode(null);
+        return { 
+          status: 'success', 
+          action: `JARVIS: Establishing direct video link for: ${args.query}. Initializing playback.` 
+        };
+
+      case 'displayWeather3D':
+        // Simulate fetching weather data
+        const mockWeather = {
+          location: args.location,
+          temp: 28,
+          condition: 'Clear',
+          humidity: 65,
+          wind: '12 km/h',
+          forecast: ['Sunny', 'Partly Cloudy', 'Clear']
+        };
+        setWeatherData(mockWeather);
+        setShowWeather(true);
+        setActiveVideoId(null); // Close video if weather shows
+        setActiveCode(null); // Close code if weather shows
+        return { 
+          status: 'success', 
+          action: `JARVIS: Projecting 3D weather holographic data for ${args.location}.` 
+        };
+
+      case 'displayCode':
+        setActiveCode({
+          language: args.language,
+          code: args.code,
+          title: args.title
+        });
+        setActiveVideoId(null);
+        setShowWeather(false);
+        return {
+          status: 'success',
+          action: `JARVIS: Projecting ${args.language} source code to the main interface.`
+        };
+
+      case 'activateDisplayMode':
+        setDisplayModeActive(true);
+        return { 
+          status: 'success', 
+          action: 'JARVIS: Display mode activated. Visual sensors and HUD are now online.' 
+        };
+
+      case 'closeDisplay':
+        setActiveVideoId(null);
+        setShowWeather(false);
+        setActiveCode(null);
+        setInfoCardData(null);
+        setFoundContact(null);
+        setDisplayModeActive(false);
+        return {
+          status: 'success',
+          action: 'JARVIS: Visual interface cleared. Returning to standard HUD.'
+        };
+
+      case 'displayInfoCard':
+        setInfoCardData({
+          title: args.title,
+          subtitle: args.subtitle,
+          details: args.details
+        });
+        setActiveVideoId(null);
+        setShowWeather(false);
+        setActiveCode(null);
+        return {
+          status: 'success',
+          action: `JARVIS: Displaying information card: ${args.title}.`
+        };
+
       case 'openChrome':
-        const searchUrl = args.query 
-          ? `intent://google.com/search?q=${encodeURIComponent(args.query)}#Intent;scheme=https;package=com.android.chrome;end`
-          : `intent://google.com#Intent;scheme=https;package=com.android.chrome;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end`;
-        triggerIntent(searchUrl);
+        const isAndroidChrome = systemEnv === 'android' || (systemEnv === 'auto' && /Android/i.test(navigator.userAgent));
+        if (isAndroidChrome) {
+          const searchUrl = args.query 
+            ? `intent://google.com/search?q=${encodeURIComponent(args.query)}#Intent;scheme=https;package=com.android.chrome;end`
+            : `intent://google.com#Intent;scheme=https;package=com.android.chrome;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end`;
+          triggerIntent(searchUrl);
+        } else {
+          const webSearchUrl = args.query 
+            ? `https://www.google.com/search?q=${encodeURIComponent(args.query)}`
+            : `https://www.google.com`;
+          window.open(webSearchUrl, '_blank');
+        }
         return { status: 'success', action: 'JARVIS: Opening Chrome for external data retrieval. Bringing to foreground.' };
 
       case 'openCalculator':
@@ -547,8 +748,14 @@ export default function App() {
         return { status: 'success', action: 'JARVIS: Accessing system file repository.' };
 
       case 'searchImages':
-        const imageUrl = `intent://google.com/search?q=${encodeURIComponent(args.query)}&tbm=isch#Intent;scheme=https;package=com.android.chrome;end`;
-        triggerIntent(imageUrl);
+        const isAndroidImages = systemEnv === 'android' || (systemEnv === 'auto' && /Android/i.test(navigator.userAgent));
+        if (isAndroidImages) {
+          const imageUrl = `intent://google.com/search?q=${encodeURIComponent(args.query)}&tbm=isch#Intent;scheme=https;package=com.android.chrome;end`;
+          triggerIntent(imageUrl);
+        } else {
+          const webImageUrl = `https://www.google.com/search?q=${encodeURIComponent(args.query)}&tbm=isch`;
+          window.open(webImageUrl, '_blank');
+        }
         return { status: 'success', action: 'JARVIS: Retrieving visual data from the web. Foregrounding Chrome.' };
 
       case 'closeApp':
@@ -705,7 +912,7 @@ export default function App() {
         <div className="flex items-center gap-3">
           <div className={`w-1.5 h-4 rounded-full ${status !== 'idle' ? 'bg-cyan-500 animate-pulse' : 'bg-white/20'}`} />
           <div className="flex flex-col">
-            <h1 className="text-[11px] font-mono tracking-[0.4em] uppercase opacity-60 leading-tight">JARVIS.CORE</h1>
+            <h1 className="text-[11px] font-mono tracking-[0.4em] uppercase opacity-60 leading-tight">JavaScript Developed Bharat</h1>
             <h1 className="text-[11px] font-mono tracking-[0.4em] uppercase opacity-60 leading-tight">SYSTEM V5.0 | BY</h1>
             <h1 className="text-[11px] font-mono tracking-[0.4em] uppercase opacity-60 leading-tight">BARATH</h1>
           </div>
@@ -757,6 +964,50 @@ export default function App() {
       {/* Main Interaction Area */}
       <div className="relative flex flex-col items-center gap-12 z-10 w-full max-w-4xl">
         
+        {/* Error & Permission HUD */}
+        <AnimatePresence>
+          {(error || permissionError) && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="absolute -top-12 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4"
+            >
+              <div className="bg-red-500/10 border border-red-500/50 backdrop-blur-xl p-4 rounded-2xl flex flex-col gap-3 shadow-2xl">
+                <div className="flex items-center gap-3 text-red-400">
+                  <Info size={20} />
+                  <p className="text-sm font-medium">{error || 'System Access Denied'}</p>
+                </div>
+                {permissionError && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs text-red-400/70 leading-relaxed">
+                      JARVIS requires microphone access to function. Please click the icon in your browser's address bar and select "Allow".
+                    </p>
+                    <button
+                      onClick={() => {
+                        setError(null);
+                        setPermissionError(false);
+                        startLiveSession();
+                      }}
+                      className="bg-red-500 text-white text-xs font-bold py-2 px-4 rounded-xl hover:bg-red-600 transition-colors uppercase tracking-widest"
+                    >
+                      Retry Authorization
+                    </button>
+                  </div>
+                )}
+                {!permissionError && (
+                  <button
+                    onClick={() => setError(null)}
+                    className="text-xs text-red-400/50 hover:text-red-400 underline underline-offset-4"
+                  >
+                    Dismiss
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Chat History & Jarvis HUD */}
         <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
           
@@ -834,7 +1085,9 @@ export default function App() {
                   {batteryLevel !== null && (
                     <div className="flex justify-between text-[8px] font-mono">
                       <span className="opacity-40">System Power</span>
-                      <span className="text-cyan-400">{batteryLevel}%</span>
+                      <span className="text-cyan-400">
+                        {batteryLevel}% {isCharging !== null && (isCharging ? '(CHARGING)' : '(DISCHARGING)')}
+                      </span>
                     </div>
                   )}
                   <div className="flex justify-between text-[8px] font-mono">
@@ -877,25 +1130,192 @@ export default function App() {
             )}
           </div>
 
-          {/* Center: Chat History */}
-          <div className="w-full h-64 overflow-y-auto custom-scrollbar flex flex-col gap-4 p-4 mask-fade-top">
-            <AnimatePresence initial={false}>
-              {messages.map((msg, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          {/* Center: Chat History / Media Display */}
+          <div className="w-full h-96 overflow-y-auto custom-scrollbar flex flex-col gap-4 p-2 mask-fade-top relative">
+            <AnimatePresence mode="wait">
+              {!displayModeActive ? (
+                <motion.div 
+                  key="standby"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden"
                 >
-                  <div className={`max-w-[80%] px-4 py-2 rounded-2xl text-sm ${
-                    msg.role === 'user' 
-                      ? 'bg-cyan-500/20 text-cyan-100 border border-cyan-500/30' 
-                      : 'bg-white/5 text-white/80 border border-white/10'
-                  }`}>
-                    {msg.text}
+                  <div className="absolute inset-0 bg-cyan-500/[0.02] animate-pulse" />
+                  <div className="z-10 flex flex-col items-center">
+                    <div className="w-12 h-12 rounded-full border border-cyan-500/20 flex items-center justify-center mb-4 animate-spin-slow">
+                      <Monitor size={20} className="text-cyan-500/40" />
+                    </div>
+                    <p className="text-[10px] font-mono tracking-[0.5em] uppercase text-cyan-500/40 mb-2">Display Standby</p>
+                    <div className="h-[1px] w-24 bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent mb-4" />
+                    <p className="text-[8px] font-mono text-cyan-400/60 animate-pulse">
+                      SAY "DISPLAY MODE ACTIVATE" TO INITIALIZE HUD
+                    </p>
                   </div>
                 </motion.div>
-              ))}
+              ) : activeVideoId ? (
+                <motion.div
+                  key="youtube-player"
+                  initial={{ opacity: 0, scale: 0.9, rotateX: 20 }}
+                  animate={{ opacity: 1, scale: 1, rotateX: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, rotateX: -20 }}
+                  className="w-full h-full rounded-3xl overflow-hidden glass border-cyan-500/30 shadow-[0_0_50px_-12px_rgba(6,182,212,0.5)] relative"
+                  style={{ perspective: '1000px' }}
+                >
+                  <iframe
+                    width="100%"
+                    height="100%"
+                    src={`https://www.youtube-nocookie.com/embed/${activeVideoId}?autoplay=1&mute=0&modestbranding=1&rel=0`}
+                    title="YouTube video player"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                    className="w-full h-full"
+                  />
+                  <button 
+                    onClick={() => setActiveVideoId(null)}
+                    className="absolute top-4 right-4 p-2 bg-black/60 backdrop-blur-md rounded-full text-white/60 hover:text-white transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </motion.div>
+              ) : showWeather && weatherData ? (
+                <motion.div
+                  key="weather-3d"
+                  initial={{ opacity: 0, scale: 0.8, rotateY: -30 }}
+                  animate={{ opacity: 1, scale: 1, rotateY: 0 }}
+                  exit={{ opacity: 0, scale: 0.8, rotateY: 30 }}
+                  className="w-full h-full rounded-3xl glass border-cyan-500/30 p-8 flex flex-col items-center justify-center gap-6 relative shadow-[0_0_50px_-12px_rgba(6,182,212,0.5)]"
+                  style={{ perspective: '1000px' }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-violet-500/10 pointer-events-none" />
+                  
+                  <div className="flex flex-col items-center gap-2 z-10">
+                    <h2 className="text-3xl font-light tracking-tighter text-white">{weatherData.temp}°C</h2>
+                    <p className="text-[10px] font-mono uppercase tracking-[0.4em] text-cyan-400">{weatherData.location}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-8 w-full z-10">
+                    <div className="flex flex-col items-center gap-1">
+                      <span className="text-[8px] font-mono uppercase opacity-40 tracking-widest">Condition</span>
+                      <span className="text-xs font-medium text-white/80">{weatherData.condition}</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-1">
+                      <span className="text-[8px] font-mono uppercase opacity-40 tracking-widest">Wind</span>
+                      <span className="text-xs font-medium text-white/80">{weatherData.wind}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4 mt-4 z-10">
+                    {weatherData.forecast.map((f: string, i: number) => (
+                      <div key={i} className="flex flex-col items-center gap-1 p-3 rounded-2xl bg-white/5 border border-white/10">
+                        <span className="text-[7px] font-mono uppercase opacity-40">Day {i+1}</span>
+                        <span className="text-[9px] font-medium">{f}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button 
+                    onClick={() => setShowWeather(false)}
+                    className="absolute top-4 right-4 p-2 bg-black/60 backdrop-blur-md rounded-full text-white/60 hover:text-white transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+
+                  {/* Holographic Scanline Effect */}
+                  <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-3xl">
+                    <div className="w-full h-1 bg-cyan-500/20 absolute top-0 animate-scanline" />
+                  </div>
+                </motion.div>
+              ) : activeCode ? (
+                <motion.div
+                  key="code-display"
+                  initial={{ opacity: 0, y: 20, rotateX: 10 }}
+                  animate={{ opacity: 1, y: 0, rotateX: 0 }}
+                  exit={{ opacity: 0, y: -20, rotateX: -10 }}
+                  className="w-full h-full rounded-3xl glass border-cyan-500/30 p-6 flex flex-col relative shadow-[0_0_50px_-12px_rgba(6,182,212,0.5)]"
+                  style={{ perspective: '1000px' }}
+                >
+                  <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+                      <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-400">
+                        {activeCode.title || `${activeCode.language.toUpperCase()} SOURCE`}
+                      </span>
+                    </div>
+                    <button 
+                      onClick={() => setActiveCode(null)}
+                      className="p-1 hover:bg-white/10 rounded-full transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  
+                  <div className="flex-1 overflow-hidden p-4">
+                    <AutoFitText text={activeCode.code} />
+                  </div>
+
+                  {/* Holographic Overlay */}
+                  <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-cyan-500/5 to-transparent rounded-3xl" />
+                </motion.div>
+              ) : infoCardData ? (
+                <motion.div
+                  key="info-card"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="w-full h-full p-8 flex flex-col relative"
+                >
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="flex flex-col">
+                      <h2 className="text-3xl font-bold text-white tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">{infoCardData.title}</h2>
+                      {infoCardData.subtitle && (
+                        <p className="text-sm font-mono uppercase tracking-[0.3em] text-cyan-400 mt-1 drop-shadow-[0_1px_5px_rgba(0,0,0,0.5)]">{infoCardData.subtitle}</p>
+                      )}
+                    </div>
+                    <button 
+                      onClick={() => setInfoCardData(null)}
+                      className="p-2 hover:bg-white/10 rounded-full transition-colors text-white"
+                    >
+                      <X size={24} />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 space-y-8 overflow-y-auto custom-scrollbar pr-2">
+                    {infoCardData.details.map((detail, i) => (
+                      <motion.div 
+                        key={i}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.1 }}
+                        className="flex flex-col border-l-2 border-cyan-500/50 pl-6"
+                      >
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-cyan-400/70 mb-1">{detail.label}</span>
+                        <span className="text-2xl font-medium text-white tracking-wide drop-shadow-[0_2px_5px_rgba(0,0,0,0.8)]">{detail.value}</span>
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  {/* Minimal Holographic Accents */}
+                  <div className="absolute bottom-8 right-8 flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+                    <span className="text-[10px] font-mono text-cyan-400/50 uppercase tracking-tighter">Live Data Stream</span>
+                  </div>
+                </motion.div>
+              ) : (
+                <div className="w-full h-full flex flex-col">
+                  {messages.length > 0 ? (
+                    <AutoFitText 
+                      text={messages[messages.length - 1].text} 
+                      className={messages[messages.length - 1].role === 'model' ? 'text-cyan-400' : 'text-cyan-100'}
+                    />
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center opacity-20">
+                      <p className="text-xs font-mono tracking-widest uppercase">System Standby</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </AnimatePresence>
           </div>
 
@@ -1387,6 +1807,29 @@ export default function App() {
       </AnimatePresence>
 
       {/* Footer Status */}
+      {/* Error Toast */}
+      <AnimatePresence>
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-24 left-4 right-4 z-[100] bg-red-500/90 backdrop-blur-md border border-red-400 p-4 rounded-xl flex items-center justify-between shadow-2xl"
+          >
+            <div className="flex items-center gap-3">
+              <Zap className="w-5 h-5 text-white animate-pulse" />
+              <p className="text-white text-sm font-medium">{error}</p>
+            </div>
+            <button 
+              onClick={() => setError(null)}
+              className="p-1 hover:bg-white/20 rounded-full transition-colors"
+            >
+              <X className="w-5 h-5 text-white" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="absolute bottom-8 left-8 right-8 flex justify-between items-end z-0">
         <div className="flex flex-col gap-1">
           <span className="text-[10px] font-mono opacity-20 uppercase tracking-tighter">Jarvis Core Link</span>

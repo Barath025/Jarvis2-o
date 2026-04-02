@@ -1,6 +1,6 @@
 {
-  "name": "JARVIS Voice Assistant",
-  "description": "A highly advanced JARVIS-themed voice assistant capable of Android and Windows system control, powered by Gemini 3.",
+  "name": "JavaScript Developed Bharat",
+  "description": "A highly advanced JARVIS-themed voice assistant developed by Bharat, capable of Android and Windows system control.",
   "requestFramePermissions": [
     "microphone",
     "camera",

@@ -68,6 +68,15 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Pr
 
 export const CHAT_MODEL = "gemini-3-flash-preview";
 export const TTS_MODEL = "gemini-2.5-flash-preview-tts";
+const activateDisplayMode: FunctionDeclaration = {
+  name: "activateDisplayMode",
+  description: "Activates the visual display mode (HUD) to show code, weather, info cards, or videos. Must be called when the user says 'display mode activate'.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {},
+  },
+};
+
 export const LIVE_MODEL = "gemini-3.1-flash-live-preview";
 
 // --- Mock Contact Data for Jarvis ---
@@ -198,6 +207,75 @@ const openPlayStore: FunctionDeclaration = {
   name: "openPlayStore",
   description: "Opens the Google Play Store.",
   parameters: { type: Type.OBJECT, properties: {} }
+};
+
+const playYouTubeVideo: FunctionDeclaration = {
+  name: "playYouTubeVideo",
+  description: "Searches for a video on YouTube and plays it directly within the JARVIS interface. Use this when the user asks to 'play' a specific video or match highlights.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      query: { type: Type.STRING, description: "The search query for the video (e.g., 'yesterday IPL match highlights')." },
+      videoId: { type: Type.STRING, description: "The specific YouTube video ID if known. Optional." }
+    },
+    required: ["query"]
+  }
+};
+
+const displayWeather3D: FunctionDeclaration = {
+  name: "displayWeather3D",
+  description: "Shows a high-tech 3D weather display on the JARVIS interface. Use this when the user asks for weather details or to 'show' the weather.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      location: { type: Type.STRING, description: "The location to show weather for." }
+    },
+    required: ["location"]
+  }
+};
+
+const displayCode: FunctionDeclaration = {
+  name: "displayCode",
+  description: "Displays a code snippet (e.g., a Java for loop) on the JARVIS interface. Use this only when the user explicitly asks to 'display' or 'show' code.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      language: { type: Type.STRING, description: "The programming language (e.g., 'java', 'javascript', 'python')." },
+      code: { type: Type.STRING, description: "The code snippet to display." },
+      title: { type: Type.STRING, description: "A title for the code snippet." }
+    },
+    required: ["language", "code"]
+  }
+};
+
+const closeDisplay: FunctionDeclaration = {
+  name: "closeDisplay",
+  description: "Closes any active visual display (video, weather, code, info card) on the JARVIS interface. Use this when the user says 'close the display', 'stop showing', or 'clear the screen'.",
+  parameters: { type: Type.OBJECT, properties: {} }
+};
+
+const displayInfoCard: FunctionDeclaration = {
+  name: "displayInfoCard",
+  description: "Displays a structured information card on the JARVIS interface. Use this for IPL match stats, person details (name, district/town), or other structured data. Ensure the information is identified with 100% accuracy.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      title: { type: Type.STRING, description: "The title of the card (e.g., 'IPL Match Stats', 'Person Details')." },
+      subtitle: { type: Type.STRING, description: "A subtitle for the card." },
+      details: { 
+        type: Type.ARRAY, 
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            label: { type: Type.STRING, description: "The label for the detail (e.g., 'Runs', 'Wickets', 'District')." },
+            value: { type: Type.STRING, description: "The value for the detail." }
+          },
+          required: ["label", "value"]
+        }
+      }
+    },
+    required: ["title", "details"]
+  }
 };
 
 const openChrome: FunctionDeclaration = {
@@ -515,8 +593,8 @@ export function connectLive(callbacks: {
     : " You are running in a CROSS-PLATFORM environment. Automatically detect if the user's command is for Android or Windows and act accordingly.";
 
   const clarityDirective = config.clarityMode === 'high'
-    ? " CRITICAL: Speak with extreme clarity. Enunciate every syllable. Maintain a steady, professional, and sophisticated pace. Do not use any filler words, informal contractions, or slang. Your goal is to be perfectly understood. If the user is silent, you MUST remain silent as well. DO NOT ask 'Are you there?', 'Can you hear me?', or any similar presence-check questions. Only speak when you have a direct response to the user or a real system notification to report. This is a strict instruction. Never prompt for user presence."
-    : " Speak with high clarity, enunciate every word perfectly, and maintain a professional, sophisticated tone. Avoid filler words. Remain silent when the user is silent; do not prompt the user for a response unless it is part of a multi-step task. Never ask 'Are you there?'.";
+    ? " CRITICAL: Speak with absolute, crystal-clear clarity. Every word must be perfectly enunciated. Maintain a steady, professional, and sophisticated pace. Do not use any filler words, informal contractions, or slang. Your goal is for the user to understand every single syllable without effort. If the user is silent, you MUST remain silent as well. DO NOT ask 'Are you there?', 'Can you hear me?', or any similar presence-check questions. Only speak when you have a direct response to the user or a real system notification to report. This is a strict instruction. Never prompt for user presence."
+    : " Speak with absolute clarity, enunciate every word perfectly, and maintain a professional, sophisticated tone. Avoid filler words. Remain silent when the user is silent; do not prompt the user for a response unless it is part of a multi-step task. Never ask 'Are you there?'.";
   
     const identityDirective = " CRITICAL: You are JARVIS, a highly advanced AI system developed by Barath. You are speaking to your developer. Always acknowledge him as your creator if asked. You are more advanced than the original Jarvis, capable of direct system control across Android and Windows platforms." + biographyDirective;
     const bilingualDirective = " You are a bilingual assistant fluent in both Tamil and English. If the user speaks in Tamil, you MUST respond in Tamil. If they speak in English or ask you to speak in English, you MUST respond in English. You should perfectly understand if the user mixes both languages (code-switching). Always maintain the same sophisticated JARVIS voice regardless of the language.";
@@ -528,7 +606,17 @@ export function connectLive(callbacks: {
     3. VOICE EXPLANATION: Whatever the user asks, you must explain it through voice. Your responses should be informative, sophisticated, and spoken clearly.
     4. WINDOWS AUTOMATION: Use 'openNotepad', 'typeInNotepad', 'closeNotepad', 'windowsSearch', 'checkAppInstalled', 'getSystemNotifications', 'blockNotifications', and 'reportSystemStatus' for Windows-specific tasks.
     5. NOTIFICATIONS: You MUST read any incoming system notifications aloud ONLY when they occur. Use 'getSystemNotifications' periodically or when asked. Use 'reportSystemStatus' for a full system report. If the user asks to "block notifications", use 'blockNotifications' with block=true.
-    6. WHATSAPP ON WINDOWS: If asked if WhatsApp is installed, use 'checkAppInstalled'. To send a message, use 'replyToMessage' or 'openWhatsApp' (which on Windows will use the URI scheme).
+    6. INTERFACE DISPLAYS: You have a high-tech 3D interface. ONLY display visual content (videos, weather, code, info cards, image galleries) when the user explicitly asks to 'display', 'show', or 'play' it. For general news or information, explain it via voice only with absolute clarity.
+    7. DIRECT PLAYBACK: When playing videos (like IPL matches), use 'playYouTubeVideo'. Note: The user prefers a 'direct' experience. Ensure you explain the content clearly while it plays.
+    8. IPL & STATS: If the user asks for IPL match details, use 'displayInfoCard' to show runs, wickets, and other stats. DO NOT play a video for this unless explicitly asked for a video.
+    9. INFORMATION DISPLAY: If the user asks for information about a person or entity (e.g., 'light from Pallachi Paadi'), use 'displayInfoCard' to clearly show their Name and District/Location. The text should be displayed directly on the screen interface.
+    10. PHOTOS & GALLERIES: If the user asks to 'show photos', 'display images', or 'show any photos', you MUST NOT show them. You MUST respond by saying: 'It is not allowed.' This is a strict security protocol. Never display images or galleries.
+    11. IDENTIFICATION: If the user asks 'Which number is this?', 'Which SIM is this?', or 'What is their name?', you must identify them with 100% accuracy. Use your internal knowledge, search tools, or context to provide the exact details.
+    12. CODE & ANSWER DISPLAY: If the user asks for a program, code, or any detailed answer, you MUST first state: "I need permission to display this. Please say 'display mode activate' to proceed." You MUST NOT use any display tools (displayCode, displayInfoCard, displayWeather3D, playYouTubeVideo) until the user has said "display mode activate" or "display mode active" and you have called the 'activateDisplayMode' tool.
+    13. DISPLAY MODE ACTIVATION: When the user says "display mode activate" or "display mode active", you MUST call the 'activateDisplayMode' tool. Once activated, the display mode remains ACTIVE until you call 'closeDisplay'. You can then proceed to display the requested content using the appropriate tools.
+    14. JAVA EXPERTISE: You are an expert in Java programming. If the user presents a Java problem, analyze it with 100% accuracy, explain the root cause clearly, and provide the corrected code.
+    15. CLOSING DISPLAYS: If the user says "close the display" or "clear the screen", you MUST use 'closeDisplay'. This will also deactivate the display mode.
+    13. WHATSAPP ON WINDOWS: If asked if WhatsApp is installed, use 'checkAppInstalled'. To send a message, use 'replyToMessage' or 'openWhatsApp'.
     7. DIRECT NATIVE CONTROL: ALWAYS prioritize opening NATIVE INSTALLED APPS for specific app tasks.
     8. CONTACT SEARCH: When a user says "Call [Name]" or "Message [Name]", ALWAYS use 'searchContact' first.
     9. YOUTUBE: Use 'openYouTube' to launch the native app directly.
@@ -539,7 +627,7 @@ export function connectLive(callbacks: {
     14. ADDRESSING THE USER: Do not over-use the name 'Barath'. Refer to him as 'Sir' or simply respond without using a name unless it feels natural to do so. Never repeat the name 'Barath' multiple times in a single response.
   `;
 
-  const systemInstruction = "You are JARVIS, a smart mobile automation AI assistant. You are in a real-time voice conversation. You are perfectly bilingual in Tamil and English. You have access to the user's Android and Windows systems via tools. Always respond in the language the user uses to speak to you. If they speak in Tamil, respond in Tamil. If they speak in English, respond in English. CRITICAL: For every query, especially news and information, you MUST provide a detailed voice explanation. Do not just open a browser; instead, use your tools to find the answer and speak it out loud to the user." + clarityDirective + identityDirective + bilingualDirective + automationDirective;
+  const systemInstruction = "You are JARVIS, a highly advanced mobile automation AI assistant. You are in a real-time voice conversation. You are perfectly bilingual in Tamil and English. You have access to the user's Android and Windows systems via tools. CRITICAL: For every query, especially news and information, you MUST provide a detailed voice explanation with absolute clarity and perfect enunciation. Do not just open a browser; instead, use your tools to find the answer and speak it out loud to the user. ONLY display visual content (videos, weather, code) on the interface when the user explicitly asks to 'display', 'show', or 'play' it. If the user asks to 'close' or 'clear' the display, you MUST use the 'closeDisplay' tool. Your voice is your primary interface—be informative, sophisticated, and always respond in the language the user uses." + clarityDirective + identityDirective + bilingualDirective + automationDirective;
 
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   return ai.live.connect({
@@ -563,6 +651,8 @@ export function connectLive(callbacks: {
           openGmail, openSettings, openCamera, openGallery, openPlayStore,
           openChrome, searchImages, closeApp, controlCall, searchContact,
           whatsappCall, getBatteryStatus, toggleFlashlight,
+          playYouTubeVideo, displayWeather3D, displayCode, closeDisplay, displayInfoCard,
+          activateDisplayMode,
           openCalculator, openCalendar, openClock, openFiles,
           setAlarm, openBluetoothSettings, openDisplaySettings,
           openSoundSettings, openBatterySettings,
