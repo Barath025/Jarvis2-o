@@ -143,7 +143,16 @@ export default function App() {
   const [showWeather, setShowWeather] = useState(false);
   const [activeCode, setActiveCode] = useState<{ language: string, code: string, title?: string } | null>(null);
   const [infoCardData, setInfoCardData] = useState<{ title: string, subtitle?: string, details: { label: string, value: string }[] } | null>(null);
-  const [displayModeActive, setDisplayModeActive] = useState(false);
+  const [displayModeActive, setDisplayModeActive] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('JARVIS_DISPLAY_MODE') === 'true';
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('JARVIS_DISPLAY_MODE', displayModeActive.toString());
+  }, [displayModeActive]);
   const [supabaseStatus, setSupabaseStatus] = useState<'testing' | 'success' | 'error' | 'connected'>('testing');
   const [supabaseMessage, setSupabaseMessage] = useState('');
   const flashlightStreamRef = useRef<MediaStream | null>(null);
@@ -917,6 +926,17 @@ export default function App() {
             <h1 className="text-[11px] font-mono tracking-[0.4em] uppercase opacity-60 leading-tight">BARATH</h1>
           </div>
         </div>
+
+        {displayModeActive && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-1.5 glass rounded-full border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.2)]"
+          >
+            <Monitor size={10} className="text-cyan-400 animate-pulse" />
+            <span className="text-[8px] font-mono text-cyan-400 uppercase tracking-[0.3em] font-bold">HUD ACTIVE</span>
+          </motion.div>
+        )}
         
         <div className="flex items-center gap-4">
           <button 

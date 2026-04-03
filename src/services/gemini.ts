@@ -68,7 +68,7 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Pr
 
 export const CHAT_MODEL = "gemini-3-flash-preview";
 export const TTS_MODEL = "gemini-2.5-flash-preview-tts";
-export const APP_URL = "https://ais-dev-ofrlazz3mwlgxphzlxybbd-544681738605.asia-southeast1.run.app";
+export const APP_URL = import.meta.env?.VITE_APP_URL || process.env.APP_URL || "https://ais-dev-ofrlazz3mwlgxphzlxybbd-544681738605.asia-southeast1.run.app";
 export const SUB_APP_NAME = "Developed Barath";
 
 const activateDisplayMode: FunctionDeclaration = {
@@ -618,7 +618,7 @@ export function connectLive(callbacks: {
     12. CODE & ANSWER DISPLAY: If the user asks for a program, code, or any detailed answer, you MUST first state: "I need permission to display this. Please say 'display mode activate' to proceed." You MUST NOT use any display tools (displayCode, displayInfoCard, displayWeather3D, playYouTubeVideo) until the user has said "display mode activate" or "display mode active" and you have called the 'activateDisplayMode' tool.
     13. DISPLAY MODE ACTIVATION: When the user says "display mode activate" or "display mode active", you MUST call the 'activateDisplayMode' tool. Once activated, the display mode remains ACTIVE until you call 'closeDisplay'. You can then proceed to display the requested content using the appropriate tools.
     14. JAVA EXPERTISE: You are an expert in Java programming. If the user presents a Java problem, analyze it with 100% accuracy, explain the root cause clearly, and provide the corrected code.
-    15. CLOSING DISPLAYS: If the user says "close the display" or "clear the screen", you MUST use 'closeDisplay'. This will also deactivate the display mode.
+    15. CLOSING DISPLAYS: If the user says "close the display", "close the display mode", "clear the screen", or "deactivate display mode", you MUST use 'closeDisplay'. This will clear all visual content and return the system to the standard standby HUD.
     13. WHATSAPP ON WINDOWS: If asked if WhatsApp is installed, use 'checkAppInstalled'. To send a message, use 'replyToMessage' or 'openWhatsApp'.
     7. DIRECT NATIVE CONTROL: ALWAYS prioritize opening NATIVE INSTALLED APPS for specific app tasks.
     8. CONTACT SEARCH: When a user says "Call [Name]" or "Message [Name]", ALWAYS use 'searchContact' first.

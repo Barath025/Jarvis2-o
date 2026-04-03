@@ -8,8 +8,12 @@ This system is optimized for both Android and Windows. Follow these steps to run
 
 ## 2. Setup Instructions
 1. **Download the project**: Extract the files to a folder on your Windows computer.
-2. **Run Setup**: Double-click the `setup.bat` file. This will create your `.env` file, ask for your API keys, and install all dependencies.
-3. **Start the System**: You can either:
+2. **Create .env File**: 
+   - Copy the contents of `.env.example` and create a new file named `.env` in the same folder.
+   - Open the `.env` file and add your `GEMINI_API_KEY` and `VITE_GEMINI_API_KEY`.
+   - The `APP_URL` and `VITE_APP_URL` are already set to your current app URL.
+3. **Run Setup**: Double-click the `setup.bat` file. This will install all dependencies.
+4. **Start the System**: You can either:
    - Double-click the `run.bat` file.
    - Or open a terminal and run `npm run dev`.
    - **Note**: If you run `npm run dev` and dependencies are missing, it will automatically try to install them for you.
