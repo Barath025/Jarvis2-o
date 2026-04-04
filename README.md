@@ -9,17 +9,13 @@ This system is optimized for both Android and Windows. Follow these steps to run
 ## 2. Setup Instructions
 1. **Download the project**: Extract the files to a folder on your Windows computer.
 2. **Run Setup**: Double-click the `setup.bat` file. This will install all dependencies.
-3. **Configure Environment**: Open the `.env` file and add your `VITE_GEMINI_API_KEY`. The Supabase credentials have already been configured for you.
-4. **Start the System**: You can either:
+3. **Start the System**: You can either:
    - Double-click the `run.bat` file.
    - Or open a terminal and run `npm run dev`.
-5. **Access the App**: Open your browser and go to `http://localhost:3000`.
+4. **Access the App**: Open your browser and go to `http://localhost:3000`.
 
 ## 3. Environment Variables
-The system uses a Gemini API key for AI features and Supabase for data storage.
-- **VITE_GEMINI_API_KEY**: Add your own Gemini API key to the `.env` file for your own security and quota.
-- **VITE_SUPABASE_URL**: Already configured in `.env`.
-- **VITE_SUPABASE_ANON_KEY**: Already configured in `.env`.
+The system is pre-configured with Supabase credentials. For your own security and to use your own quota, you can optionally add a `GEMINI_API_KEY` to your system environment variables or a `.env` file.
 
 ## 4. Windows Automation Features
 JARVIS is now equipped with a local automation server for deep Windows control:

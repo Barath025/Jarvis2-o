@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "predev": "node -e \"if (!require('fs').existsSync('node_modules')) { console.log('Installing dependencies...'); require('child_process').execSync('npm install', {stdio: 'inherit'}); }\"",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rimraf dist",
