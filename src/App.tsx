@@ -404,17 +404,26 @@ export default function App() {
           console.error('JARVIS: Live session error detected:', err);
           const errorMessage = err?.message || String(err);
           
-          // Automatically resolve common issues
-          if (errorMessage.includes('429') || errorMessage.includes('quota')) {
-            setError('System Quota Exceeded. Retrying in 5 seconds...');
-            setTimeout(() => startLiveSession(), 5000);
-          } else if (errorMessage.includes('API_KEY_INVALID')) {
-            setError('Invalid API Key. Please check your .env file.');
-          } else {
-            // General retry for transient network issues
-            console.warn('JARVIS: Attempting automatic reconnection...');
-            setTimeout(() => startLiveSession(), 2000);
+          // Stop retrying if we've already tried or if it's a fatal error
+          if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('401')) {
+            setError('Invalid API Key. Please check your configuration.');
+            stopLiveSession();
+            return;
           }
+
+          if (errorMessage.includes('429') || errorMessage.includes('quota')) {
+            setError('System Quota Exceeded. Please try again later.');
+            stopLiveSession();
+            return;
+          }
+
+          // For network errors, try a limited number of retries
+          setError('Network error. Attempting to reconnect...');
+          setTimeout(() => {
+            if (status !== 'idle') {
+              startLiveSession();
+            }
+          }, 3000);
           
           stopLiveSession();
         },
