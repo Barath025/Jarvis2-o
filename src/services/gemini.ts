@@ -1,18 +1,10 @@
 import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } from "@google/genai";
 
 const getApiKey = () => {
-  // Try to get from multiple sources for maximum reliability
-  const vKey = import.meta.env?.VITE_GEMINI_API_KEY;
-  const vApiKey = import.meta.env?.VITE_API_KEY;
-  const pKey = typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined;
-  const pApiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
-  
-  // Also check localStorage as a fallback/cache if the user manually entered it
+  // Check localStorage as the primary source
   const lKey = typeof window !== 'undefined' ? localStorage.getItem('GEMINI_API_KEY') : null;
 
-  const key = vKey || vApiKey || pKey || pApiKey || lKey;
-
-  if (!key || key === "MY_GEMINI_API_KEY" || key === "") {
+  if (!lKey || lKey === "MY_GEMINI_API_KEY" || lKey === "") {
     // If we are in a browser, we can check if it was passed via URL as a last resort for debugging
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
@@ -22,15 +14,10 @@ const getApiKey = () => {
         return urlKey;
       }
     }
-    throw new Error("Gemini API Key not configured. Please add GEMINI_API_KEY to your environment variables or secrets.");
+    throw new Error("Gemini API Key not configured. Please set it in the JARVIS setup interface.");
   }
 
-  // Cache the working key
-  if (typeof window !== 'undefined' && key) {
-    localStorage.setItem('GEMINI_API_KEY', key);
-  }
-
-  return key;
+  return lKey;
 };
 
 /**

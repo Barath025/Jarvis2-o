@@ -4,10 +4,11 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Volume2, Languages, RefreshCcw, Settings, X, Info, ChevronRight, Zap, Activity, User, Phone, MessageSquare, Search, Monitor } from 'lucide-react';
+import { Mic, Volume2, Languages, RefreshCcw, Settings, X, Info, ChevronRight, Zap, Activity, User, Phone, MessageSquare, Search, Monitor, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { connectLive, MOCK_CONTACTS } from './services/gemini';
 import { testSupabaseConnection } from './lib/supabase';
+import { ApiKeySetup } from './components/ApiKeySetup';
 
 // --- Types ---
 type Language = 'ta-IN' | 'en-US';
@@ -63,6 +64,7 @@ const AutoFitText = ({ text, className = "" }: { text: string, className?: strin
 };
 
 export default function App() {
+  const [apiKey, setApiKey] = useState<string | null>(localStorage.getItem('GEMINI_API_KEY'));
   const [status, setStatus] = useState<Status>('idle');
   const [language, setLanguage] = useState<Language>('en-US');
   const [voice, setVoice] = useState<Voice>('Zephyr');
@@ -83,9 +85,8 @@ export default function App() {
   useEffect(() => {
     // Check for API key on mount
     try {
-      const key = typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY) : undefined;
-      if (!key && !localStorage.getItem('GEMINI_API_KEY')) {
-        setError('JARVIS: API Key missing. Please set GEMINI_API_KEY in your .env file and restart the server.');
+      if (!localStorage.getItem('GEMINI_API_KEY')) {
+        setError('JARVIS: API Key missing. Please set it in the JARVIS setup interface.');
       }
     } catch (e) {
       console.warn('JARVIS: Initial API key check failed, will retry on session start.');
@@ -157,6 +158,10 @@ export default function App() {
   const [supabaseMessage, setSupabaseMessage] = useState('');
   const flashlightStreamRef = useRef<MediaStream | null>(null);
   const wakeLockRef = useRef<any>(null);
+
+  if (!apiKey) {
+    return <ApiKeySetup onSave={(key) => { localStorage.setItem('GEMINI_API_KEY', key); setApiKey(key); }} />;
+  }
 
   // --- Wake Lock Management ---
   const requestWakeLock = async () => {
@@ -286,6 +291,9 @@ export default function App() {
       });
 
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
       
       // Setup Analyzer for Visual Feedback
       analyzerRef.current = audioContextRef.current.createAnalyser();
@@ -1838,7 +1846,9 @@ export default function App() {
           >
             <div className="flex items-center gap-3">
               <Zap className="w-5 h-5 text-white animate-pulse" />
-              <p className="text-white text-sm font-medium">{error}</p>
+              <p className="text-white text-sm font-medium">
+                {permissionError ? 'Microphone permission denied. Please enable it in browser settings.' : error}
+              </p>
             </div>
             <button 
               onClick={() => setError(null)}
@@ -1862,6 +1872,13 @@ export default function App() {
         </div>
         
         <div className="flex flex-col items-end gap-1">
+          <button 
+            onClick={() => { localStorage.removeItem('GEMINI_API_KEY'); window.location.reload(); }}
+            className="p-1 hover:bg-white/10 rounded-full transition-colors"
+            title="Reset API Key"
+          >
+            <RotateCcw className="w-4 h-4 text-white/50" />
+          </button>
           <span className="text-[10px] font-mono opacity-20 uppercase tracking-tighter">Developed by Barath</span>
           <span className="text-[10px] font-mono uppercase tracking-[0.2em]">JARVIS.CORE v5.0</span>
         </div>
