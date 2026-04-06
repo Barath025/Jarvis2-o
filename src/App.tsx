@@ -153,14 +153,27 @@ export default function App() {
   const [showWeather, setShowWeather] = useState(false);
   const [activeCode, setActiveCode] = useState<{ language: string, code: string, title?: string } | null>(null);
   const [infoCardData, setInfoCardData] = useState<{ title: string, subtitle?: string, details: { label: string, value: string }[] } | null>(null);
-  const [displayModeActive, setDisplayModeActive] = useState(() => {
+  const [displayModeActive, setDisplayModeActiveState] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('JARVIS_DISPLAY_MODE') === 'true';
+      const stored = localStorage.getItem('JARVIS_DISPLAY_MODE');
+      console.log('JARVIS: Initializing displayModeActive from localStorage:', stored);
+      return stored === 'true';
     }
     return false;
   });
 
+  const setDisplayModeActive = (value: boolean) => {
+    console.log('JARVIS: setDisplayModeActive called with:', value);
+    setDisplayModeActiveState(value);
+  };
+
+  const isInitialMount = useRef(true);
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    console.log('JARVIS: displayModeActive changed to:', displayModeActive);
     localStorage.setItem('JARVIS_DISPLAY_MODE', displayModeActive.toString());
   }, [displayModeActive]);
   const [supabaseStatus, setSupabaseStatus] = useState<'testing' | 'success' | 'error' | 'connected'>('testing');
