@@ -301,7 +301,7 @@ export default function App() {
         } 
       }).catch(err => {
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          throw new Error('Microphone permission denied. Please enable it in your browser settings.');
+          throw new Error('Microphone permission denied. Please enable it in your browser settings (Site Settings > Permissions).');
         }
         throw err;
       });
