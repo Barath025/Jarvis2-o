@@ -15,7 +15,7 @@ type Language = 'ta-IN' | 'en-US';
 type Status = 'idle' | 'connecting' | 'live' | 'speaking';
 type Voice = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr';
 type ClarityMode = 'natural' | 'high';
-type Theme = 'nebula' | 'electric' | 'emerald' | 'ruby' | 'gold' | 'obsidian';
+type Theme = 'nebula' | 'electric' | 'emerald' | 'ruby' | 'gold' | 'obsidian' | 'ironman';
 type SystemEnv = 'android' | 'windows' | 'auto';
 
 interface Contact {
@@ -36,16 +36,16 @@ const AutoFitText = ({ text, className = "" }: { text: string, className?: strin
       const lineCount = text.split('\n').length;
       const charCount = text.length;
       
-      // Start with a small base size as requested
-      let newSize = 9;
+      // Start with a balanced base size
+      let newSize = 12;
       
-      // Aggressively shrink based on content to ensure it fits in one box
-      if (lineCount > 12 || charCount > 250) newSize = 8;
-      if (lineCount > 20 || charCount > 500) newSize = 7;
-      if (lineCount > 35 || charCount > 1000) newSize = 6;
-      if (lineCount > 55 || charCount > 1800) newSize = 5;
-      if (lineCount > 80 || charCount > 3000) newSize = 4;
-      if (lineCount > 120) newSize = 3; // Extreme shrink for very long theories
+      // Gradually shrink based on content to ensure readability
+      if (lineCount > 10 || charCount > 200) newSize = 11;
+      if (lineCount > 15 || charCount > 400) newSize = 10;
+      if (lineCount > 25 || charCount > 800) newSize = 9;
+      if (lineCount > 40 || charCount > 1500) newSize = 8;
+      if (lineCount > 60 || charCount > 2500) newSize = 7;
+      if (lineCount > 100) newSize = 6;
       
       setFontSize(newSize);
     }
@@ -69,15 +69,18 @@ export default function App() {
   const [language, setLanguage] = useState<Language>('en-US');
   const [voice, setVoice] = useState<Voice>('Zephyr');
   const [clarityMode, setClarityMode] = useState<ClarityMode>('high');
-  const [theme, setTheme] = useState<Theme>('nebula');
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('JARVIS_THEME') as Theme) || 'nebula');
+
+  useEffect(() => {
+    localStorage.setItem('JARVIS_THEME', theme);
+  }, [theme]);
   const [systemEnv, setSystemEnv] = useState<SystemEnv>('auto');
-  const [showSetup, setShowSetup] = useState(true);
+  const [showSetup, setShowSetup] = useState(!localStorage.getItem('GEMINI_API_KEY'));
   const [showSettings, setShowSettings] = useState(false);
   const [showRunGuide, setShowRunGuide] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [permissionError, setPermissionError] = useState<boolean>(false);
   const [automationServerUrl, setAutomationServerUrl] = useState('http://localhost:3000');
   const [permissions, setPermissions] = useState({ mic: false, camera: false });
   const [notificationsBlocked, setNotificationsBlocked] = useState(false);
@@ -137,6 +140,12 @@ export default function App() {
   const [pendingIntent, setPendingIntent] = useState<string | null>(null);
   const [foundContact, setFoundContact] = useState<Contact | null>(null);
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
+  const [currentDate, setCurrentDate] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentDate(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
   const [isCharging, setIsCharging] = useState<boolean | null>(null);
   const [isFlashlightOn, setIsFlashlightOn] = useState(false);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
@@ -158,10 +167,6 @@ export default function App() {
   const [supabaseMessage, setSupabaseMessage] = useState('');
   const flashlightStreamRef = useRef<MediaStream | null>(null);
   const wakeLockRef = useRef<any>(null);
-
-  if (!apiKey) {
-    return <ApiKeySetup onSave={(key) => { localStorage.setItem('GEMINI_API_KEY', key); setApiKey(key); }} />;
-  }
 
   // --- Wake Lock Management ---
   const requestWakeLock = async () => {
@@ -264,7 +269,6 @@ export default function App() {
   const startLiveSession = async () => {
     setStatus('connecting');
     setError(null);
-    setPermissionError(false);
     initPlaybackContext();
     requestWakeLock();
     
@@ -284,7 +288,6 @@ export default function App() {
         } 
       }).catch(err => {
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          setPermissionError(true);
           throw new Error('Microphone permission denied. Please enable it in your browser settings.');
         }
         throw err;
@@ -418,6 +421,7 @@ export default function App() {
           }
 
           // For network errors, try a limited number of retries
+          console.log('JARVIS: Network error. Attempting to reconnect...');
           setError('Network error. Attempting to reconnect...');
           setTimeout(() => {
             if (status !== 'idle') {
@@ -425,9 +429,10 @@ export default function App() {
             }
           }, 3000);
           
-          stopLiveSession();
+          // Do not stop the session immediately for transient network errors
         },
         onclose: () => {
+          console.log('JARVIS: Live session closed.');
           stopLiveSession();
         }
       }, { language, voiceName: voice, clarityMode, systemEnv });
@@ -468,6 +473,34 @@ export default function App() {
     const searchUrl = `intent://google.com/search?q=${encodeURIComponent(query)}&tbm=isch#Intent;scheme=https;package=com.android.chrome;end`;
     window.open(searchUrl, '_blank');
     setMessages(prev => [...prev, { role: 'model', text: `Searching for ${query} in Google Chrome...` }]);
+  };
+
+  const getBatteryStatus = async () => {
+    try {
+      // @ts-ignore - Battery API is not in standard TS types
+      const battery = await navigator.getBattery();
+      const level = Math.round(battery.level * 100);
+      setBatteryLevel(level);
+      setIsCharging(battery.charging);
+      return { 
+        status: 'success', 
+        percentage: level,
+        isCharging: battery.charging,
+        action: `JARVIS: System power levels at ${level}%${battery.charging ? ' and charging' : ''}.` 
+      };
+    } catch (err) {
+      return { status: 'error', message: 'Unable to access system power management.' };
+    }
+  };
+
+  const getSystemNotifications = async () => {
+    try {
+      const response = await fetch(`${automationServerUrl}/api/automation/notifications`);
+      const data = await response.json();
+      return { status: 'success', notifications: data.notifications || [] };
+    } catch (err) {
+      return { status: 'error', message: 'Failed to retrieve system notifications.' };
+    }
   };
 
   const handleToolCall = async (name: string, args: any) => {
@@ -540,21 +573,7 @@ export default function App() {
         return { status: 'success', action: 'JARVIS: Opening native messaging app. Foregrounding active instance.' };
 
       case 'getBatteryStatus':
-        try {
-          // @ts-ignore - Battery API is not in standard TS types
-          const battery = await navigator.getBattery();
-          const level = Math.round(battery.level * 100);
-          setBatteryLevel(level);
-          setIsCharging(battery.charging);
-          return { 
-            status: 'success', 
-            percentage: level,
-            isCharging: battery.charging,
-            action: `JARVIS: System power levels at ${level}%${battery.charging ? ' and charging' : ''}.` 
-          };
-        } catch (err) {
-          return { status: 'error', message: 'Unable to access system power management.' };
-        }
+        return await getBatteryStatus();
 
       case 'toggleFlashlight':
         try {
@@ -689,13 +708,20 @@ export default function App() {
         };
 
       case 'activateDisplayMode':
+      case 'activate':
         setDisplayModeActive(true);
+        if (status === 'live' || status === 'speaking') {
+          sessionRef.current?.sendRealtimeInput({
+            text: 'Display mode active.'
+          });
+        }
         return { 
           status: 'success', 
           action: 'JARVIS: Display mode activated. Visual sensors and HUD are now online.' 
         };
 
       case 'closeDisplay':
+      case 'deactivate':
         setActiveVideoId(null);
         setShowWeather(false);
         setActiveCode(null);
@@ -796,21 +822,17 @@ export default function App() {
           action: `JARVIS: ${callAction}. Note: Native Android security requires manual confirmation for speaker/hangup via the on-screen dialer controls.` 
         };
 
-      case 'openNotepad':
-        if (navigator.platform.indexOf('Win') > -1) {
-          try {
-            await fetch(`${automationServerUrl}/api/automation/open`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ appName: 'notepad' })
-            });
-            return { status: 'success', action: 'JARVIS: Initializing Windows Notepad.' };
-          } catch (err) {
-            window.open('ms-notepad:', '_blank');
-            return { status: 'success', action: 'JARVIS: Initializing Windows Notepad via URI fallback.' };
-          }
+      case 'openApplication':
+        try {
+          await fetch(`${automationServerUrl}/api/automation/open`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appName: args.appName })
+          });
+          return { status: 'success', action: `JARVIS: Initializing ${args.appName}.` };
+        } catch (err) {
+          return { status: 'error', message: `Failed to open ${args.appName}. Ensure server is running.` };
         }
-        return { status: 'error', message: 'Notepad is only available on Windows systems.' };
 
       case 'typeInNotepad':
         try {
@@ -846,13 +868,7 @@ export default function App() {
         }
 
       case 'getSystemNotifications':
-        try {
-          const response = await fetch(`${automationServerUrl}/api/automation/notifications`);
-          const data = await response.json();
-          return { status: 'success', notifications: data.notifications };
-        } catch (err) {
-          return { status: 'error', message: 'Failed to retrieve system notifications.' };
-        }
+        return await getSystemNotifications();
 
       case 'blockNotifications':
         setNotificationsBlocked(args.block);
@@ -860,11 +876,24 @@ export default function App() {
 
       case 'reportSystemStatus':
         try {
-          const response = await fetch(`${automationServerUrl}/api/automation/notifications`);
-          const data = await response.json();
-          const notifs = data.notifications || [];
-          const battery = batteryLevel ? `Battery is at ${batteryLevel}%.` : "Battery status unavailable.";
-          const report = `JARVIS Status Report: ${battery} ${notifs.length > 0 ? `You have ${notifs.length} pending notifications.` : "No new notifications."} ${notifs.map((n: any) => `${n.app}: ${n.title}`).join('. ')}`;
+          const batteryResult = await getBatteryStatus();
+          const notifsResult = await getSystemNotifications();
+          
+          let report = "JARVIS Status Report: ";
+          if (batteryResult.status === 'success') {
+            report += `Battery is at ${batteryResult.percentage}%. `;
+          } else {
+            report += "Battery status unavailable. ";
+          }
+          
+          if (notifsResult.status === 'success') {
+            const notifs = notifsResult.notifications || [];
+            report += notifs.length > 0 
+              ? `You have ${notifs.length} pending notifications: ${notifs.map((n: any) => n.title).join(', ')}.` 
+              : "No new notifications.";
+          } else {
+            report += "Notification status unavailable.";
+          }
           
           if (status === 'live' || status === 'speaking') {
             sessionRef.current?.sendRealtimeInput({
@@ -1001,9 +1030,8 @@ export default function App() {
       {/* Main Interaction Area */}
       <div className="relative flex flex-col items-center gap-12 z-10 w-full max-w-4xl">
         
-        {/* Error & Permission HUD */}
         <AnimatePresence>
-          {(error || permissionError) && (
+          {error && (
             <motion.div
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1013,33 +1041,14 @@ export default function App() {
               <div className="bg-red-500/10 border border-red-500/50 backdrop-blur-xl p-4 rounded-2xl flex flex-col gap-3 shadow-2xl">
                 <div className="flex items-center gap-3 text-red-400">
                   <Info size={20} />
-                  <p className="text-sm font-medium">{error || 'System Access Denied'}</p>
+                  <p className="text-sm font-medium">{error}</p>
                 </div>
-                {permissionError && (
-                  <div className="flex flex-col gap-2">
-                    <p className="text-xs text-red-400/70 leading-relaxed">
-                      JARVIS requires microphone access to function. Please click the icon in your browser's address bar and select "Allow".
-                    </p>
-                    <button
-                      onClick={() => {
-                        setError(null);
-                        setPermissionError(false);
-                        startLiveSession();
-                      }}
-                      className="bg-red-500 text-white text-xs font-bold py-2 px-4 rounded-xl hover:bg-red-600 transition-colors uppercase tracking-widest"
-                    >
-                      Retry Authorization
-                    </button>
-                  </div>
-                )}
-                {!permissionError && (
-                  <button
-                    onClick={() => setError(null)}
-                    className="text-xs text-red-400/50 hover:text-red-400 underline underline-offset-4"
-                  >
-                    Dismiss
-                  </button>
-                )}
+                <button
+                  onClick={() => setError(null)}
+                  className="text-xs text-red-400/50 hover:text-red-400 underline underline-offset-4"
+                >
+                  Dismiss
+                </button>
               </div>
             </motion.div>
           )}
@@ -1347,8 +1356,13 @@ export default function App() {
                       className={messages[messages.length - 1].role === 'model' ? 'text-cyan-400' : 'text-cyan-100'}
                     />
                   ) : (
-                    <div className="flex-1 flex items-center justify-center opacity-20">
+                    <div className="flex-1 flex flex-col items-center justify-center opacity-20 gap-4">
                       <p className="text-xs font-mono tracking-widest uppercase">System Standby</p>
+                      <div className="flex gap-4 text-[10px] font-mono uppercase tracking-widest">
+                        <span>{currentDate.toLocaleDateString()}</span>
+                        {batteryLevel !== null && <span>Battery: {batteryLevel}%</span>}
+                        {showWeather && weatherData && <span>{weatherData.location}: {weatherData.temp}°C</span>}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1491,80 +1505,6 @@ export default function App() {
 
       {/* Global Automation Pending Overlay */}
       <AnimatePresence>
-        {pendingIntent && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="glass p-8 rounded-[2rem] border-cyan-500/30 max-w-sm w-full text-center flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(6,182,212,0.2)]"
-            >
-              <div className="w-20 h-20 rounded-full bg-cyan-500/20 flex items-center justify-center text-cyan-400 animate-pulse border border-cyan-500/30">
-                <Zap size={40} />
-              </div>
-              
-              <div className="space-y-2">
-                <h3 className="text-lg font-mono uppercase tracking-[0.2em] text-cyan-400">System Synchronization</h3>
-                <p className="text-[10px] font-mono opacity-40 uppercase tracking-widest">Samsung A33 5G Optimized</p>
-                <p className="text-xs opacity-60 leading-relaxed">
-                  JARVIS is establishing a <span className="text-cyan-400">Secure System Handshake</span>. To complete the automation link, a physical interaction is required.
-                </p>
-              </div>
-
-              <div className="bg-cyan-500/5 border border-cyan-500/20 p-4 rounded-2xl flex items-start gap-3 w-full text-left">
-                <Zap size={16} className="text-cyan-400 mt-1 shrink-0" />
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-cyan-400">Automation Bypass</span>
-                  <p className="text-[10px] text-white/50 leading-tight">
-                    Tapping the button below establishes a persistent Java-Bridge session for this command.
-                  </p>
-                </div>
-              </div>
-
-              <div className="w-full flex flex-col gap-3">
-                <button 
-                  onClick={() => {
-                    if (pendingIntent) {
-                      safeTriggerIntent(pendingIntent);
-                    }
-                    // Keep it for a second to ensure launch
-                    setTimeout(() => setPendingIntent(null), 1000);
-                  }}
-                  className="w-full py-5 bg-cyan-500 text-black font-mono text-xs uppercase tracking-[0.3em] rounded-2xl font-black hover:bg-cyan-400 transition-all shadow-[0_0_30px_rgba(6,182,212,0.5)] active:scale-95"
-                >
-                  Sync System
-                </button>
-                <button 
-                  onClick={() => setPendingIntent(null)}
-                  className="text-[10px] font-mono uppercase tracking-widest opacity-40 hover:opacity-100 transition-opacity py-2"
-                >
-                  Abort Automation
-                </button>
-                <button 
-                  onClick={() => {
-                    setNotificationsBlocked(true);
-                    setPendingIntent(null);
-                  }}
-                  className="text-[10px] font-mono uppercase tracking-widest opacity-20 hover:opacity-100 transition-opacity py-2"
-                >
-                  Block these prompts
-                </button>
-              </div>
-              
-              <div className="pt-2 border-t border-white/5 w-full">
-                <div className="flex items-center justify-center gap-2 text-[8px] font-mono opacity-30 uppercase tracking-tighter">
-                  <Activity size={10} className="animate-pulse" />
-                  <span>Intent Buffer: {pendingIntent.substring(0, 30)}...</span>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
       </AnimatePresence>
 
       {/* Setup Overlay */}
@@ -1592,6 +1532,7 @@ export default function App() {
               </div>
 
               <div className="flex flex-col gap-6">
+                <ApiKeySetup onSave={(key) => { localStorage.setItem('GEMINI_API_KEY', key); setApiKey(key); setShowSetup(false); }} />
                 <div className="flex gap-4 items-start">
                   <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-500">
                     <Activity size={20} />
@@ -1677,7 +1618,7 @@ export default function App() {
               <div className="flex flex-col gap-3">
                 <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Aura Theme</label>
                 <div className="grid grid-cols-3 gap-2">
-                  {(['nebula', 'electric', 'emerald', 'ruby', 'gold', 'obsidian'] as Theme[]).map(t => (
+                  {(['nebula', 'electric', 'emerald', 'ruby', 'gold', 'obsidian', 'ironman'] as Theme[]).map(t => (
                     <button
                       key={t}
                       onClick={() => setTheme(t)}
@@ -1856,7 +1797,7 @@ export default function App() {
             <div className="flex items-center gap-3">
               <Zap className="w-5 h-5 text-white animate-pulse" />
               <p className="text-white text-sm font-medium">
-                {permissionError ? 'Microphone permission denied. Please enable it in browser settings.' : error}
+                {error}
               </p>
             </div>
             <button 

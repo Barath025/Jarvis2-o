@@ -44,6 +44,12 @@
   --bg-gradient: radial-gradient(circle at 50% 50%, #3a2a0a 0%, #02020a 100%);
 }
 
+.theme-ironman {
+  --color-accent: #ff0000;
+  --color-secondary: #ffcc00;
+  --bg-gradient: radial-gradient(circle at 50% 50%, #3a0a0a 0%, #02020a 100%);
+}
+
 .theme-obsidian {
   --color-accent: #ffffff;
   --color-secondary: #444444;
@@ -58,7 +64,7 @@ body {
   transition: background 0.8s ease;
 }
 
-.theme-nebula, .theme-electric, .theme-emerald, .theme-ruby, .theme-gold, .theme-obsidian {
+.theme-nebula, .theme-electric, .theme-emerald, .theme-ruby, .theme-gold, .theme-obsidian, .theme-ironman {
   background: var(--bg-gradient);
 }
 
