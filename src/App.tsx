@@ -1809,9 +1809,19 @@ export default function App() {
           >
             <div className="flex items-center gap-3">
               <Zap className="w-5 h-5 text-white animate-pulse" />
-              <p className="text-white text-sm font-medium">
-                {error}
-              </p>
+              <div className="flex flex-col gap-1">
+                <p className="text-white text-sm font-medium">
+                  {error}
+                </p>
+                {error.includes('Microphone permission') && (
+                  <button 
+                    onClick={() => { setError(null); startLiveSession(); }}
+                    className="text-xs text-white underline font-bold mt-1"
+                  >
+                    Retry Microphone Access
+                  </button>
+                )}
+              </div>
             </div>
             <button 
               onClick={() => setError(null)}
