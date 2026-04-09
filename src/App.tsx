@@ -37,15 +37,15 @@ const AutoFitText = ({ text, className = "" }: { text: string, className?: strin
       const charCount = text.length;
       
       // Start with a balanced base size
-      let newSize = 12;
+      let newSize = 10;
       
       // Gradually shrink based on content to ensure readability
-      if (lineCount > 10 || charCount > 200) newSize = 11;
-      if (lineCount > 15 || charCount > 400) newSize = 10;
-      if (lineCount > 25 || charCount > 800) newSize = 9;
-      if (lineCount > 40 || charCount > 1500) newSize = 8;
-      if (lineCount > 60 || charCount > 2500) newSize = 7;
-      if (lineCount > 100) newSize = 6;
+      if (lineCount > 10 || charCount > 200) newSize = 9;
+      if (lineCount > 15 || charCount > 400) newSize = 8;
+      if (lineCount > 25 || charCount > 800) newSize = 7;
+      if (lineCount > 40 || charCount > 1500) newSize = 6;
+      if (lineCount > 60 || charCount > 2500) newSize = 5;
+      if (lineCount > 100) newSize = 4;
       
       setFontSize(newSize);
     }
@@ -175,7 +175,13 @@ export default function App() {
     }
     console.log('JARVIS: displayModeActive changed to:', displayModeActive);
     localStorage.setItem('JARVIS_DISPLAY_MODE', displayModeActive.toString());
-  }, [displayModeActive]);
+    
+    if (status === 'live' || status === 'speaking') {
+      sessionRef.current?.sendRealtimeInput({
+        text: displayModeActive ? 'Display mode activated.' : 'Display mode deactivated.'
+      });
+    }
+  }, [displayModeActive, status]);
   const [supabaseStatus, setSupabaseStatus] = useState<'testing' | 'success' | 'error' | 'connected'>('testing');
   const [supabaseMessage, setSupabaseMessage] = useState('');
   const flashlightStreamRef = useRef<MediaStream | null>(null);
@@ -337,6 +343,17 @@ export default function App() {
           
           processorRef.current.onaudioprocess = (e) => {
             const inputData = e.inputBuffer.getChannelData(0);
+            
+            // Basic Voice Activity Detection (VAD)
+            let sum = 0;
+            for (let i = 0; i < inputData.length; i++) {
+              sum += Math.abs(inputData[i]);
+            }
+            const volume = sum / inputData.length;
+            
+            // Threshold for VAD (adjust as needed)
+            if (volume < 0.01) return;
+
             const pcmData = new Int16Array(inputData.length);
             for (let i = 0; i < inputData.length; i++) {
               pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
@@ -735,15 +752,10 @@ export default function App() {
 
       case 'closeDisplay':
       case 'deactivate':
-        setActiveVideoId(null);
-        setShowWeather(false);
-        setActiveCode(null);
-        setInfoCardData(null);
-        setFoundContact(null);
         setDisplayModeActive(false);
         return {
           status: 'success',
-          action: 'JARVIS: Visual interface cleared. Returning to standard HUD.'
+          action: 'JARVIS: Visual interface hidden.'
         };
 
       case 'displayInfoCard':

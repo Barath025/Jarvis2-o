@@ -527,7 +527,25 @@ const biographyDirective = `
 export async function getChatReply(message: string, history: any[] = [], language: 'ta-IN' | 'en-US' = 'en-US') {
   return withRetry(async () => {
     const ai = new GoogleGenAI({ apiKey: getApiKey() });
-    const identityDirective = " You are JARVIS, developed by Barath. You are speaking to your developer. You are a highly advanced AI assistant, more capable than the original Jarvis. Do not over-use the name 'Barath'. Refer to him as 'Sir' or simply respond without using a name unless it feels natural." + biographyDirective;
+    const automationSecurityDirective = `
+    AUTOMATION SECURITY PROTOCOL:
+    - CRITICAL: You are locked from performing any automation tasks (Windows or Android) by default.
+    - If the user asks to perform an automation task, you MUST first ask: "Please provide the secret code to authorize automation, or say 'Unlock with face' to use face recognition."
+    - The secret code is: 9791.
+    - If the user provides the code "9791", you should say: "Access code verified. Automation is now ready." and proceed to execute the requested automation task.
+    - If the user says "Unlock with face," you MUST call the 'openFaceLock' tool to initiate the camera and face verification process.
+    - ONLY if the face recognition is successful, you should say: "Face verified. Automation is now ready." and then proceed to execute the requested automation task.
+    - If face recognition fails, you MUST say: "Face verification failed. Access denied." and maintain the locked state.
+    - You MUST maintain this locked state until either the code or face recognition is successful in the current session.
+    `;
+
+    const displayDirective = `
+    DISPLAY PROTOCOL:
+    - When asked to display information (e.g., IPL scores, details), present it in a conversational, step-by-step manner.
+    - If there is a lot of information, display it one by one or ask the user if they want to see the next part.
+    `;
+
+    const identityDirective = " You are JARVIS, developed by Barath. You are speaking to your developer. You are a highly advanced AI assistant, more capable than the original Jarvis. Do not over-use the name 'Barath'. Refer to him as 'Sir' or simply respond without using a name unless it feels natural." + biographyDirective + automationSecurityDirective + displayDirective;
     const systemInstruction = language === 'ta-IN' 
       ? "You are JARVIS, a smart mobile automation AI assistant. Speak naturally in Tamil. Keep responses concise for voice interaction." + identityDirective
       : "You are JARVIS, a smart mobile automation AI assistant. Speak naturally in English. Keep responses concise for voice interaction." + identityDirective;
@@ -586,7 +604,25 @@ export function connectLive(callbacks: {
     ? " CRITICAL: Speak with absolute, crystal-clear clarity. Every word must be perfectly enunciated. Maintain a steady, professional, and sophisticated pace. Do not use any filler words, informal contractions, or slang. Your goal is for the user to understand every single syllable without effort. If the user is silent, you MUST remain silent as well. DO NOT ask 'Are you there?', 'Can you hear me?', or any similar presence-check questions. Only speak when you have a direct response to the user or a real system notification to report. This is a strict instruction. Never prompt for user presence."
     : " Speak with absolute clarity, enunciate every word perfectly, and maintain a professional, sophisticated tone. Avoid filler words. Remain silent when the user is silent; do not prompt the user for a response unless it is part of a multi-step task. Never ask 'Are you there?'.";
   
-    const identityDirective = " CRITICAL: You are JARVIS, a highly advanced AI system developed by Barath. You are speaking to your developer. Always acknowledge him as your creator if asked. You are more advanced than the original Jarvis, capable of direct system control across Android and Windows platforms." + biographyDirective;
+    const automationSecurityDirective = `
+    AUTOMATION SECURITY PROTOCOL:
+    - CRITICAL: You are locked from performing any automation tasks (Windows or Android) by default.
+    - If the user asks to perform an automation task, you MUST first ask: "Please provide the secret code to authorize automation, or say 'Unlock with face' to use face recognition."
+    - The secret code is: 9791.
+    - If the user provides the code "9791", you should say: "Access code verified. Automation is now ready." and proceed to execute the requested automation task.
+    - If the user says "Unlock with face," you MUST call the 'openFaceLock' tool to initiate the camera and face verification process.
+    - ONLY if the face recognition is successful, you should say: "Face verified. Automation is now ready." and then proceed to execute the requested automation task.
+    - If face recognition fails, you MUST say: "Face verification failed. Access denied." and maintain the locked state.
+    - You MUST maintain this locked state until either the code or face recognition is successful in the current session.
+    `;
+
+    const displayDirective = `
+    DISPLAY PROTOCOL:
+    - When asked to display information (e.g., IPL scores, details), present it in a conversational, step-by-step manner.
+    - If there is a lot of information, display it one by one or ask the user if they want to see the next part.
+    `;
+
+    const identityDirective = " CRITICAL: You are JARVIS, a highly advanced AI system developed by Barath. You are speaking to your developer. Always acknowledge him as your creator if asked. You are more advanced than the original Jarvis, capable of direct system control across Android and Windows platforms." + biographyDirective + automationSecurityDirective + displayDirective;
     const bilingualDirective = " You are a bilingual assistant fluent in both Tamil and English. If the user speaks in Tamil, you MUST respond in Tamil. If they speak in English or ask you to speak in English, you MUST respond in English. You should perfectly understand if the user mixes both languages (code-switching). Always maintain the same sophisticated JARVIS voice regardless of the language.";
     const automationDirective = `
     CRITICAL: You are JARVIS, a Smart Automation AI Assistant. Your job is to execute user commands on both Android and Windows devices with absolute precision. ${systemContext}
