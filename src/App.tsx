@@ -1556,7 +1556,12 @@ export default function App() {
               </div>
 
               <div className="flex flex-col gap-6">
-                <ApiKeySetup onSave={(key) => { localStorage.setItem('GEMINI_API_KEY', key); setApiKey(key); setShowSetup(false); }} />
+                <ApiKeySetup onSave={(key) => { 
+                  localStorage.setItem('GEMINI_API_KEY', key); 
+                  setApiKey(key); 
+                  setShowSetup(false); 
+                  startLiveSession(); 
+                }} />
                 <div className="flex gap-4 items-start">
                   <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-500">
                     <Activity size={20} />
