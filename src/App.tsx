@@ -75,7 +75,7 @@ export default function App() {
     localStorage.setItem('JARVIS_THEME', theme);
   }, [theme]);
   const [systemEnv, setSystemEnv] = useState<SystemEnv>('auto');
-  const [showSetup, setShowSetup] = useState(!localStorage.getItem('GEMINI_API_KEY'));
+  const [showSetup, setShowSetup] = useState(!localStorage.getItem('GEMINI_API_KEY') && !process.env.GEMINI_API_KEY);
   const [showSettings, setShowSettings] = useState(false);
   const [showRunGuide, setShowRunGuide] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
@@ -109,6 +109,11 @@ export default function App() {
       const hasCam = devices.some(d => d.kind === 'videoinput');
       setPermissions({ mic: hasMic, camera: hasCam });
     });
+
+    // Request microphone permission
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(() => setPermissions(prev => ({ ...prev, mic: true })))
+      .catch(err => console.error('Microphone permission denied:', err));
 
     // Notification Polling for Windows
     const pollNotifications = async () => {
@@ -280,6 +285,12 @@ export default function App() {
   };
 
   const startLiveSession = async () => {
+    if (!apiKey && !process.env.GEMINI_API_KEY) {
+      setError('JARVIS: API Key missing. Please set it in the JARVIS setup interface.');
+      setShowSetup(true);
+      return;
+    }
+
     setStatus('connecting');
     setError(null);
     initPlaybackContext();
@@ -301,7 +312,7 @@ export default function App() {
         } 
       }).catch(err => {
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          throw new Error('Microphone permission denied. Please enable it in your browser settings (Site Settings > Permissions).');
+          throw new Error('Microphone permission denied. Please allow microphone access. If you are in an iframe, try opening in a new tab.');
         }
         throw err;
       });

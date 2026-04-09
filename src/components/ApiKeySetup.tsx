@@ -15,7 +15,10 @@ export const ApiKeySetup = ({ onSave }: { onSave: (key: string) => void }) => {
           placeholder="AIza..."
         />
         <button
-          onClick={() => onSave(key)}
+          onClick={() => {
+            localStorage.setItem('GEMINI_API_KEY', key);
+            onSave(key);
+          }}
           className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded"
         >
           OK
