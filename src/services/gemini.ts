@@ -1,20 +1,20 @@
 import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } from "@google/genai";
 
 const getApiKey = () => {
-  // Check localStorage as the primary source
+  // 1. Prioritize Vercel-injected environment variable (secure)
+  if (process.env.GEMINI_API_KEY) {
+    return process.env.GEMINI_API_KEY;
+  }
+
+  // 2. Fallback to localStorage (for local development/manual overrides)
   const lKey = typeof window !== 'undefined' ? localStorage.getItem('GEMINI_API_KEY') : null;
 
   if (!lKey || lKey === "MY_GEMINI_API_KEY" || lKey === "") {
-    // If we are in a browser, we can check if it was passed via URL as a last resort for debugging
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlKey = urlParams.get('api_key');
-      if (urlKey) {
-        localStorage.setItem('GEMINI_API_KEY', urlKey);
-        return urlKey;
-      }
-    }
-    throw new Error("Gemini API Key not configured. Please set it in the JARVIS setup interface.");
+    throw new Error(
+      "Gemini API Key not found. " +
+      "For deployment, please add 'GEMINI_API_KEY' to your Vercel Project Settings > Environment Variables. " +
+      "For local development, please set it in your .env file."
+    );
   }
 
   return lKey;
