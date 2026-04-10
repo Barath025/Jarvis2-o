@@ -1560,7 +1560,6 @@ export default function App() {
                   localStorage.setItem('GEMINI_API_KEY', key); 
                   setApiKey(key); 
                   setShowSetup(false); 
-                  startLiveSession(); 
                 }} />
                 <div className="flex gap-4 items-start">
                   <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-500">
