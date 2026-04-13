@@ -381,6 +381,16 @@ export default function App() {
           // Handle Transcriptions
           const modelText = message.serverContent?.modelTurn?.parts?.[0]?.text;
           if (modelText) {
+            // Check for display mode commands in spoken text
+            const lowerText = modelText.toLowerCase();
+            if (lowerText.includes("display mode")) {
+              if (lowerText.includes("deactivated") || lowerText.includes("disabled")) {
+                await handleToolCall('closeDisplay', {});
+              } else if (lowerText.includes("active") || lowerText.includes("activated")) {
+                await handleToolCall('activateDisplayMode', {});
+              }
+            }
+
             setMessages(prev => {
               const last = prev[prev.length - 1];
               if (last && last.role === 'model') {
@@ -444,16 +454,21 @@ export default function App() {
             return;
           }
 
-          // For network errors, try a limited number of retries
-          console.log('JARVIS: Network error. Attempting to reconnect...');
-          setError('Network error. Attempting to reconnect...');
-          setTimeout(() => {
-            if (status !== 'idle') {
-              startLiveSession();
-            }
-          }, 3000);
-          
-          // Do not stop the session immediately for transient network errors
+          // Handle 'service unavailable' (503) or transient errors with a longer backoff
+          if (errorMessage.includes('unavailable') || errorMessage.includes('503') || errorMessage.includes('500') || errorMessage.includes('network')) {
+            console.log('JARVIS: Transient error detected. Attempting to maintain session...');
+            setError('Connection unstable. Reconnecting...');
+            
+            // Instead of stopping the session, we attempt to restart it
+            // The existing session might be in a bad state, so we stop and restart
+            stopLiveSession();
+            setTimeout(() => {
+              if (status !== 'idle') {
+                startLiveSession();
+              }
+            }, 2000);
+            return;
+          }
         },
         onclose: () => {
           console.log('JARVIS: Live session closed.');
@@ -1261,8 +1276,8 @@ export default function App() {
                   <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-violet-500/10 pointer-events-none" />
                   
                   <div className="flex flex-col items-center gap-2 z-10">
-                    <h2 className="text-3xl font-light tracking-tighter text-white">{weatherData.temp}°C</h2>
-                    <p className="text-[10px] font-mono uppercase tracking-[0.4em] text-cyan-400">{weatherData.location}</p>
+                    <h2 className="text-xl font-light tracking-tighter text-white">{weatherData.temp}°C</h2>
+                    <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-400">{weatherData.location}</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-8 w-full z-10">
@@ -1338,9 +1353,9 @@ export default function App() {
                 >
                   <div className="flex items-center justify-between mb-8">
                     <div className="flex flex-col">
-                      <h2 className="text-3xl font-bold text-white tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">{infoCardData.title}</h2>
+                      <h2 className="text-xl font-bold text-white tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">{infoCardData.title}</h2>
                       {infoCardData.subtitle && (
-                        <p className="text-sm font-mono uppercase tracking-[0.3em] text-cyan-400 mt-1 drop-shadow-[0_1px_5px_rgba(0,0,0,0.5)]">{infoCardData.subtitle}</p>
+                        <p className="text-xs font-mono uppercase tracking-[0.2em] text-cyan-400 mt-1 drop-shadow-[0_1px_5px_rgba(0,0,0,0.5)]">{infoCardData.subtitle}</p>
                       )}
                     </div>
                     <button 
@@ -1561,32 +1576,13 @@ export default function App() {
                   setApiKey(key); 
                   setShowSetup(false); 
                 }} />
-                <div className="flex gap-4 items-start">
-                  <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-500">
-                    <Activity size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium mb-1">Direct System Control</h3>
-                    <p className="text-xs text-white/50 leading-relaxed">JARVIS interacts directly with your Android apps via native intents, bypassing Chrome whenever possible.</p>
-                  </div>
-                </div>
-
-                <div className="flex gap-4 items-start">
-                  <div className="p-3 rounded-2xl bg-violet-500/10 text-violet-500">
-                    <Volume2 size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium mb-1">High Clarity Output</h3>
-                    <p className="text-xs text-white/50 leading-relaxed">Configured for perfect enunciation in Tamil and English. Optimized for voice automation.</p>
-                  </div>
-                </div>
               </div>
 
               <button 
                 onClick={() => setShowSetup(false)}
                 className="w-full py-4 bg-cyan-600 text-white font-bold rounded-2xl hover:bg-cyan-500 transition-colors flex items-center justify-center gap-2"
               >
-                Initialize JARVIS <ChevronRight size={18} />
+                OK
               </button>
             </motion.div>
           </motion.div>
@@ -1829,12 +1825,15 @@ export default function App() {
                   {error}
                 </p>
                 {error.includes('Microphone permission') && (
-                  <button 
-                    onClick={() => { setError(null); startLiveSession(); }}
-                    className="text-xs text-white underline font-bold mt-1"
-                  >
-                    Retry Microphone Access
-                  </button>
+                  <div className="flex flex-col gap-1 mt-2">
+                    <p className="text-white/80 text-xs">If on mobile, check your browser's site settings to allow microphone access.</p>
+                    <button 
+                      onClick={() => { setError(null); startLiveSession(); }}
+                      className="text-xs text-white underline font-bold mt-1"
+                    >
+                      Retry Microphone Access
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

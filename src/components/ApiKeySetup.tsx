@@ -14,10 +14,44 @@ export const ApiKeySetup = ({ onSave }: { onSave: (key: string) => void }) => {
           className="w-full bg-gray-800 text-white p-2 rounded mb-4 border border-gray-700"
           placeholder="AIza..."
         />
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => {
+              if (key.trim()) {
+                localStorage.setItem('GEMINI_API_KEY', key);
+                onSave(key);
+              }
+            }}
+            className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded"
+          >
+            Add New
+          </button>
+          <button
+            onClick={() => {
+              setKey('');
+              localStorage.removeItem('GEMINI_API_KEY');
+            }}
+            className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+          >
+            Delete
+          </button>
+        </div>
         <button
           onClick={() => {
-            localStorage.setItem('GEMINI_API_KEY', key);
-            onSave(key);
+            setKey('');
+            localStorage.removeItem('GEMINI_API_KEY');
+            window.location.reload();
+          }}
+          className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded mb-4"
+        >
+          Reset API Key
+        </button>
+        <button
+          onClick={() => {
+            if (key.trim()) {
+              localStorage.setItem('GEMINI_API_KEY', key);
+              onSave(key);
+            }
           }}
           className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded"
         >
