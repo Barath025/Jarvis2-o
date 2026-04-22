@@ -4,10 +4,6 @@
   "requestFramePermissions": [
     "microphone",
     "camera",
-    "geolocation",
-    "screen-wake-lock",
-    "display-capture",
-    "notifications",
-    "midi"
+    "screen-wake-lock"
   ]
 }

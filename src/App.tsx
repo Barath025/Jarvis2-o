@@ -74,27 +74,19 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('JARVIS_THEME', theme);
   }, [theme]);
-  const [systemEnv, setSystemEnv] = useState<SystemEnv>('auto');
-  const [showSetup, setShowSetup] = useState(!localStorage.getItem('GEMINI_API_KEY') && !process.env.GEMINI_API_KEY);
+  const [systemEnv, setSystemEnv] = useState<SystemEnv>(() => {
+    if (typeof window !== 'undefined' && /Android/i.test(navigator.userAgent)) return 'android';
+    return 'auto';
+  });
+  const [showSetup, setShowSetup] = useState(!apiKey && !process.env.GEMINI_API_KEY);
   const [showSettings, setShowSettings] = useState(false);
-  const [showRunGuide, setShowRunGuide] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [automationServerUrl, setAutomationServerUrl] = useState('http://localhost:3000');
   const [permissions, setPermissions] = useState({ mic: false, camera: false });
   const [notificationsBlocked, setNotificationsBlocked] = useState(false);
 
   useEffect(() => {
-    // Check for API key on mount
-    try {
-      if (!localStorage.getItem('GEMINI_API_KEY')) {
-        setError('JARVIS: API Key missing. Please set it in the JARVIS setup interface.');
-      }
-    } catch (e) {
-      console.warn('JARVIS: Initial API key check failed, will retry on session start.');
-    }
-
     // setAutomationLog(prev => [`JARVIS: Java-Bridge initialized. Native OS hooks established.`, ...prev].slice(0, 5));
     
     // Test Supabase Connection
@@ -109,11 +101,6 @@ export default function App() {
       const hasCam = devices.some(d => d.kind === 'videoinput');
       setPermissions({ mic: hasMic, camera: hasCam });
     });
-
-    // Request microphone permission
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(() => setPermissions(prev => ({ ...prev, mic: true })))
-      .catch(err => console.error('Microphone permission denied:', err));
 
     // Notification Polling for Windows
     const pollNotifications = async () => {
@@ -138,7 +125,29 @@ export default function App() {
 
     const interval = setInterval(pollNotifications, 5000); // Poll every 5 seconds
     return () => clearInterval(interval);
-  }, [notificationsBlocked, status]);
+  }, [apiKey, notificationsBlocked, status, automationServerUrl]);
+  useEffect(() => {
+    // Proactive environment check to solve permission issues "automatically"
+    if (window.self !== window.top) {
+      console.log('JARVIS: Running in preview mode. Checking for access restrictions...');
+      
+      const checkPermissions = async () => {
+        try {
+          if (navigator.permissions && (navigator.permissions as any).query) {
+            const micStatus = await navigator.permissions.query({ name: 'microphone' as any });
+            if (micStatus.state === 'denied') {
+              setError('Microphone access is blocked in this view. Please click "Open in New Tab" below to enable JARVIS Live.');
+            }
+          }
+        } catch (e) {
+          console.warn('JARVIS: Permission probe failed.', e);
+        }
+      };
+      
+      checkPermissions();
+    }
+  }, []);
+
   const [messages, setMessages] = useState<{ role: 'user' | 'model', text: string }[]>([]);
   const [currentTranscription, setCurrentTranscription] = useState("");
   const [automationLog, setAutomationLog] = useState<string[]>([]);
@@ -297,12 +306,32 @@ export default function App() {
     requestWakeLock();
     
     try {
-      // Check for mediaDevices support
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Your browser does not support microphone access.');
+      // Automatic detection of secure context and media device availability
+      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+        throw new Error('JARVIS requires a secure (HTTPS) connection to access system resources.');
       }
 
-      // Optimized Microphone Constraints for Clarity
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        // If in iframe and failing, it's almost certainly a permission policy issue
+        if (window.self !== window.top) {
+          throw new Error('System access blocked by browser security (Iframe detected). Please use the "Open in New Tab" option to initialize JARVIS safely.');
+        }
+        throw new Error('Your current environment does not support microphone access.');
+      }
+
+      // Proactive permission check if supported
+      if (navigator.permissions && (navigator.permissions as any).query) {
+        try {
+          const micStatus = await navigator.permissions.query({ name: 'microphone' as any });
+          if (micStatus.state === 'denied' && window.self !== window.top) {
+             throw new Error('Microphone access is restricted in this preview. Please click "Open in New Tab" to authorize JARVIS.');
+          }
+        } catch (e) {
+          console.log('JARVIS: Permissions API query not supported for microphone.');
+        }
+      }
+
+      // Optimized Microphone Constraints
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
@@ -311,10 +340,15 @@ export default function App() {
           sampleRate: 16000
         } 
       }).catch(err => {
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          throw new Error('Microphone permission denied. Please allow microphone access. If you are in an iframe, try opening in a new tab.');
+        console.error('JARVIS: getUserMedia Error:', err);
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.name === 'SecurityError') {
+          // If we detect we are in an iframe and permission is denied/security error occurs
+          if (window.self !== window.top) {
+            return Promise.reject(new Error('Microphone access blocked in preview. Open in a new tab to fix this automatically.'));
+          }
+          return Promise.reject(new Error('Microphone access was denied. Please check your browser site settings.'));
         }
-        throw err;
+        return Promise.reject(err);
       });
 
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
@@ -344,7 +378,7 @@ export default function App() {
           sourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
           sourceRef.current.connect(analyzerRef.current!);
           
-          processorRef.current = audioContextRef.current!.createScriptProcessor(4096, 1, 1);
+          processorRef.current = audioContextRef.current!.createScriptProcessor(2048, 1, 1);
           
           processorRef.current.onaudioprocess = (e) => {
             const inputData = e.inputBuffer.getChannelData(0);
@@ -366,6 +400,14 @@ export default function App() {
         },
         onmessage: async (msg: any) => {
           const message = msg as any;
+          // Handle GoAway signal
+          if (message.serverContent?.goAway) {
+            console.log('JARVIS: Received GoAway signal. Closing session gracefully.');
+            sessionRef.current?.close();
+            stopLiveSession();
+            return;
+          }
+
           // Handle Audio Output
           const audioData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
           if (audioData) {
@@ -381,6 +423,7 @@ export default function App() {
           // Handle Transcriptions
           const modelText = message.serverContent?.modelTurn?.parts?.[0]?.text;
           if (modelText) {
+            console.log('JARVIS: Model response:', modelText);
             // Check for display mode commands in spoken text
             const lowerText = modelText.toLowerCase();
             if (lowerText.includes("display mode")) {
@@ -439,28 +482,16 @@ export default function App() {
         },
         onerror: (err: any) => {
           console.error('JARVIS: Live session error detected:', err);
-          const errorMessage = err?.message || String(err);
+          const errorMessage = (err?.message || String(err)).toLowerCase();
           
-          // Stop retrying if we've already tried or if it's a fatal error
-          if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('401')) {
-            setError('Invalid API Key. Please check your configuration.');
-            stopLiveSession();
-            return;
-          }
-
-          if (errorMessage.includes('429') || errorMessage.includes('quota')) {
-            setError('System Quota Exceeded. Please try again later.');
-            stopLiveSession();
-            return;
-          }
-
-          // Handle 'service unavailable' (503) or transient errors with a longer backoff
-          if (errorMessage.includes('unavailable') || errorMessage.includes('503') || errorMessage.includes('500') || errorMessage.includes('network')) {
-            console.log('JARVIS: Transient error detected. Attempting to maintain session...');
+          if (errorMessage.includes('notallowederror') || errorMessage.includes('permissiondenied')) {
+            setError('Microphone access denied. Please open in a new tab to allow microphone access.');
+          } else if (errorMessage.includes('api_key_invalid') || errorMessage.includes('401')) {
+            setError('Invalid API Key. Please check your configuration in Settings.');
+          } else if (errorMessage.includes('429') || errorMessage.includes('quota')) {
+            setError('System Quota Exceeded. Please wait a few minutes and try again.');
+          } else if (errorMessage.includes('unavailable') || errorMessage.includes('503') || errorMessage.includes('500') || errorMessage.includes('network')) {
             setError('Connection unstable. Reconnecting...');
-            
-            // Instead of stopping the session, we attempt to restart it
-            // The existing session might be in a bad state, so we stop and restart
             stopLiveSession();
             setTimeout(() => {
               if (status !== 'idle') {
@@ -468,7 +499,11 @@ export default function App() {
               }
             }, 2000);
             return;
+          } else {
+            setError(`Live session error: ${errorMessage}`);
           }
+          
+          stopLiveSession();
         },
         onclose: () => {
           console.log('JARVIS: Live session closed.');
@@ -486,19 +521,32 @@ export default function App() {
   };
 
   const stopLiveSession = () => {
+    console.log('JARVIS: Deactivating session...');
     sessionRef.current?.close();
-    processorRef.current?.disconnect();
-    sourceRef.current?.disconnect();
-    analyzerRef.current?.disconnect();
-    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-    audioContextRef.current?.close();
-    playbackContextRef.current?.close();
-    
     sessionRef.current = null;
-    processorRef.current = null;
-    sourceRef.current = null;
-    analyzerRef.current = null;
+
+    if (processorRef.current) {
+      processorRef.current.disconnect();
+      processorRef.current = null;
+    }
+    if (sourceRef.current) {
+      sourceRef.current.disconnect();
+      sourceRef.current = null;
+    }
+    if (analyzerRef.current) {
+      analyzerRef.current.disconnect();
+      analyzerRef.current = null;
+    }
+    
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    audioContextRef.current?.close();
     audioContextRef.current = null;
+
+    playbackContextRef.current?.close();
     playbackContextRef.current = null;
     
     setStatus('idle');
@@ -1043,25 +1091,10 @@ export default function App() {
           </button>
           
           <button 
-            onClick={() => setShowDiagnostics(!showDiagnostics)}
-            className={`glass p-3 rounded-full transition-all ${showDiagnostics ? 'bg-cyan-500/20 text-cyan-400' : 'opacity-60'}`}
-            title="System Diagnostics"
-          >
-            <Activity size={16} />
-          </button>
-
-          <button 
             onClick={() => setShowSettings(true)}
             className="glass p-3 rounded-full hover:bg-white/5 transition-all opacity-60"
           >
             <Settings size={16} />
-          </button>
-
-          <button 
-            onClick={() => setShowRunGuide(true)}
-            className="glass p-3 rounded-full hover:bg-white/5 transition-all opacity-60"
-          >
-            <Info size={16} />
           </button>
         </div>
       </div>
@@ -1075,19 +1108,29 @@ export default function App() {
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="absolute -top-12 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4"
+              className="absolute top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4"
             >
               <div className="bg-red-500/10 border border-red-500/50 backdrop-blur-xl p-4 rounded-2xl flex flex-col gap-3 shadow-2xl">
                 <div className="flex items-center gap-3 text-red-400">
                   <Info size={20} />
-                  <p className="text-sm font-medium">{error}</p>
+                  <p className="text-xs font-medium">{error}</p>
                 </div>
-                <button
-                  onClick={() => setError(null)}
-                  className="text-xs text-red-400/50 hover:text-red-400 underline underline-offset-4"
-                >
-                  Dismiss
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setError(null)}
+                    className="text-xs text-red-400/50 hover:text-red-400 underline underline-offset-4"
+                  >
+                    Dismiss
+                  </button>
+                  <a
+                    href={window.location.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs bg-red-500/20 text-red-200 px-3 py-1.5 rounded-lg hover:bg-red-500/30 transition-colors text-center"
+                  >
+                    Open in New Tab
+                  </a>
+                </div>
               </div>
             </motion.div>
           )}
@@ -1122,97 +1165,6 @@ export default function App() {
                 )}
               </div>
             </div>
-
-            {showDiagnostics && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="glass p-4 rounded-2xl border-cyan-500/20 bg-cyan-500/5"
-              >
-                <h4 className="text-[9px] font-mono uppercase tracking-widest text-cyan-400 mb-2">Health Check</h4>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[8px] font-mono">
-                    <span className="opacity-40">Browser Background</span>
-                    <span className="text-green-500">ACTIVE</span>
-                  </div>
-                  <div className="flex justify-between text-[8px] font-mono">
-                    <span className="opacity-40">Intent Engine</span>
-                    <span className="text-green-500">READY</span>
-                  </div>
-                  <div className="flex justify-between text-[8px] font-mono">
-                    <span className="opacity-40">Java Intent Bridge</span>
-                    <span className="text-green-500">OPTIMIZED</span>
-                  </div>
-                  <div className="flex justify-between text-[8px] font-mono">
-                    <span className="opacity-40">Native OS Hook</span>
-                    <span className="text-green-500">BYPASS ACTIVE</span>
-                  </div>
-                  <div className="flex justify-between text-[8px] font-mono">
-                    <span className="opacity-40">Automation Mode</span>
-                    <span className="text-cyan-400">100% PERSISTENT</span>
-                  </div>
-                  <div className="flex justify-between text-[8px] font-mono">
-                    <span className="opacity-40">Background Service</span>
-                    <span className="text-cyan-400">ACTIVE</span>
-                  </div>
-                  <div className="flex justify-between text-[8px] font-mono">
-                    <span className="opacity-40">Supabase DB</span>
-                    <span className={supabaseStatus === 'success' || supabaseStatus === 'connected' ? "text-green-500" : "text-red-500"}>
-                      {supabaseStatus.toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-[8px] font-mono">
-                    <span className="opacity-40">Wake Lock State</span>
-                    <span className={wakeLockRef.current ? "text-cyan-400" : "text-white/20"}>
-                      {wakeLockRef.current ? "ACTIVE" : "IDLE"}
-                    </span>
-                  </div>
-                  {batteryLevel !== null && (
-                    <div className="flex justify-between text-[8px] font-mono">
-                      <span className="opacity-40">System Power</span>
-                      <span className="text-cyan-400">
-                        {batteryLevel}% {isCharging !== null && (isCharging ? '(CHARGING)' : '(DISCHARGING)')}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-[8px] font-mono">
-                    <span className="opacity-40">Photon Emitters</span>
-                    <span className={isFlashlightOn ? "text-yellow-400" : "text-white/20"}>
-                      {isFlashlightOn ? "ACTIVE" : "IDLE"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-[8px] font-mono">
-                    <span className="opacity-40">Mic Permission</span>
-                    <span className={permissions.mic ? "text-green-500" : "text-red-500"}>
-                      {permissions.mic ? "GRANTED" : "REQUIRED"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Java Bridge Core Service Display */}
-                <div className="mt-4 pt-4 border-t border-cyan-500/10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
-                    <h5 className="text-[8px] font-mono uppercase tracking-widest text-cyan-400">Java Bridge Core</h5>
-                  </div>
-                  <pre className="text-[7px] font-mono text-cyan-300/40 overflow-x-auto leading-tight bg-black/20 p-2 rounded">
-{`public class JarvisAutomationService 
-    extends AccessibilityService {
-  @Override
-  public void onAccessibilityEvent(
-      AccessibilityEvent event) {
-    // 100% Automation Hook
-    if (event.getEventType() == 
-        AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-      Log.d("JARVIS", "Bridge: " + 
-        event.getPackageName());
-    }
-  }
-}`}
-                  </pre>
-                </div>
-              </motion.div>
-            )}
           </div>
 
           {/* Center: Chat History / Media Display */}
@@ -1484,14 +1436,18 @@ export default function App() {
                 opacity: 0.3 + (micLevel / 150)
               }}
             />
-            <div className="aura-core cursor-pointer group">
+            <button 
+              onClick={status === 'idle' ? startLiveSession : stopLiveSession}
+              className="aura-core cursor-pointer group pointer-events-auto"
+              aria-label={status === 'idle' ? "Initialize Jarvis" : "Deactivate Jarvis"}
+            >
               <div className="absolute inset-0 flex items-center justify-center">
                 {status === 'idle' && <Mic size={24} className="text-violet-500 group-hover:scale-110 transition-transform" />}
                 {status === 'connecting' && <RefreshCcw size={24} className="text-violet-500 animate-spin" />}
                 {status === 'live' && <Zap size={24} className="text-cyan-500 animate-pulse" />}
                 {status === 'speaking' && <Volume2 size={24} className="text-violet-500" />}
               </div>
-            </div>
+            </button>
           </div>
         </div>
 
@@ -1514,7 +1470,9 @@ export default function App() {
                   className="glass px-8 py-4 rounded-3xl flex items-center gap-4 hover:bg-white/10 transition-all group border border-cyan-500/20 shadow-[0_0_20px_rgba(6,182,212,0.2)]"
                 >
                   <Zap size={18} className="text-cyan-400 group-hover:animate-pulse" />
-                  <span className="text-[12px] font-mono opacity-80 uppercase tracking-[0.3em]">Initialize Jarvis</span>
+                  <span className="text-[12px] font-mono opacity-80 uppercase tracking-[0.3em]">
+                    Initialize Jarvis
+                  </span>
                 </button>
               </motion.div>
             )}
@@ -1572,31 +1530,64 @@ export default function App() {
 
               <div className="flex flex-col gap-6">
                 <ApiKeySetup onSave={(key) => { 
-                  localStorage.setItem('GEMINI_API_KEY', key); 
                   setApiKey(key); 
-                  setShowSetup(false); 
+                  setTimeout(() => setShowSetup(false), 800);
                 }} />
+                <div className="flex gap-4 items-start">
+                  <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-500">
+                    <Activity size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium mb-1">Direct System Control</h3>
+                    <p className="text-xs text-white/50 leading-relaxed">JARVIS interacts directly with your Android apps via native intents, bypassing Chrome whenever possible.</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 items-start">
+                  <div className="p-3 rounded-2xl bg-violet-500/10 text-violet-500">
+                    <Volume2 size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium mb-1">High Clarity Output</h3>
+                    <p className="text-xs text-white/50 leading-relaxed">Configured for perfect enunciation in Tamil and English. Optimized for voice automation.</p>
+                  </div>
+                </div>
               </div>
 
               <button 
-                onClick={() => setShowSetup(false)}
+                onClick={() => {
+                  if (apiKey || localStorage.getItem('GEMINI_API_KEY')) {
+                    setShowSetup(false);
+                  } else {
+                    setError('Please enter and save your Gemini API Key first.');
+                  }
+                }}
                 className="w-full py-4 bg-cyan-600 text-white font-bold rounded-2xl hover:bg-cyan-500 transition-colors flex items-center justify-center gap-2"
               >
-                OK
+                Initialize JARVIS <ChevronRight size={18} />
               </button>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Settings Panel */}
+      {/* Settings Icon - Always visible, higher z-index, better touch target */}
+      <button 
+        onClick={() => setShowSettings(true)} 
+        className="fixed top-6 right-6 z-50 p-4 bg-black/20 backdrop-blur-md rounded-full border border-white/10 hover:bg-white/10 transition-all active:scale-95"
+        aria-label="Settings"
+      >
+        <Settings size={24} className="text-white" />
+      </button>
+
+      {/* Settings Panel - Adjusted width for mobile */}
       <AnimatePresence>
         {showSettings && (
           <motion.div 
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
-            className="fixed inset-y-0 right-0 w-80 z-40 glass border-l border-white/10 p-8 flex flex-col gap-8"
+            className="fixed inset-y-0 right-0 w-full sm:w-80 z-[60] glass border-l border-white/10 p-8 flex flex-col gap-8 overflow-y-auto"
           >
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-light">Clarity Settings</h2>
@@ -1606,6 +1597,9 @@ export default function App() {
             </div>
 
             <div className="flex flex-col gap-6">
+              <ApiKeySetup onSave={(key) => { 
+                setApiKey(key); 
+              }} />
               <div className="flex flex-col gap-3">
                 <label className="text-[10px] font-mono uppercase opacity-40 tracking-widest">Enunciation Mode</label>
                 <div className="flex gap-2">
@@ -1723,91 +1717,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Run Guide Modal */}
-      <AnimatePresence>
-        {showRunGuide && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl"
-          >
-            <motion.div 
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              className="glass max-w-2xl w-full max-h-[80vh] overflow-y-auto p-8 rounded-3xl flex flex-col gap-6 custom-scrollbar"
-            >
-              <div className="flex justify-between items-start sticky top-0 bg-transparent backdrop-blur-sm pb-4 border-b border-white/10">
-                <div className="flex flex-col gap-1">
-                  <h2 className="text-2xl font-light tracking-tight">Run Setup Guide</h2>
-                  <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">Windows & Android</p>
-                </div>
-                <button onClick={() => setShowRunGuide(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="space-y-8 py-4">
-                <section>
-                  <h3 className="text-violet-400 font-mono text-xs uppercase tracking-widest mb-4">1. Windows Setup</h3>
-                  <div className="bg-white/5 p-4 rounded-xl font-mono text-[11px] leading-relaxed space-y-2">
-                    <p>â€¢ Install <span className="text-white">Node.js</span> (v18+)</p>
-                    <p>â€¢ Run <code className="text-cyan-400">npm install</code> in terminal</p>
-                    <p>â€¢ Add <code className="text-cyan-400">GEMINI_API_KEY</code> to .env file</p>
-                    <p>â€¢ Run <code className="text-cyan-400">npm run dev</code> to start</p>
-                  </div>
-                </section>
-
-                <section>
-                  <h3 className="text-violet-400 font-mono text-xs uppercase tracking-widest mb-4">2. Android Setup (Standalone)</h3>
-                  <div className="bg-white/5 p-4 rounded-xl font-mono text-[11px] leading-relaxed space-y-4">
-                    <div className="space-y-2">
-                      <p>â€¢ Run app on PC with <code className="text-cyan-400">npm run dev -- --host</code></p>
-                      <p>â€¢ Connect Phone & PC to same Wi-Fi</p>
-                      <p>â€¢ Open Phone Browser: <span className="text-white">http://[Your-PC-IP]:3000</span></p>
-                    </div>
-                    <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
-                      <p className="text-cyan-400 font-bold mb-1">âœ¨ JARVIS STANDALONE MODE:</p>
-                      <p className="opacity-80">Tap the three dots (Chrome) &gt; "Add to Home screen". Start from home screen for a full-screen, standalone Jarvis experience without browser bars.</p>
-                    </div>
-                  </div>
-                </section>
-
-                <section>
-                  <h3 className="text-cyan-400 font-mono text-xs uppercase tracking-widest mb-4">3. Samsung A33 5G Optimization</h3>
-                  <div className="bg-cyan-500/5 p-4 rounded-xl font-mono text-[11px] leading-relaxed space-y-3 border border-cyan-500/20">
-                    <p className="text-white/80">To ensure seamless automation and system synchronization:</p>
-                    <div className="space-y-2 opacity-70">
-                      <p>â€¢ <span className="text-cyan-400">Settings &gt; Apps &gt; Chrome &gt; Appear on top</span>: Set to <span className="text-white">Allowed</span>.</p>
-                      <p>â€¢ <span className="text-cyan-400">Settings &gt; Security and privacy &gt; Auto Blocker</span>: Set to <span className="text-white">Off</span>.</p>
-                      <p>â€¢ <span className="text-cyan-400">Settings &gt; Apps &gt; [App Name] &gt; Open by default</span>: Ensure <span className="text-white">Open supported links</span> is ON.</p>
-                      <p>â€¢ <span className="text-cyan-400">Chrome Settings &gt; Site Settings &gt; Pop-ups and redirects</span>: Set to <span className="text-white">Allowed</span>.</p>
-                    </div>
-                  </div>
-                </section>
-
-                <section>
-                  <h3 className="text-violet-400 font-mono text-xs uppercase tracking-widest mb-4">4. Quick Run (Batch)</h3>
-                  <p className="text-xs opacity-60 mb-2">Create 'run.bat' on Windows with:</p>
-                  <pre className="bg-black/40 p-3 rounded-lg text-[10px] text-cyan-400">
-                    @echo off{"\n"}
-                    npm run dev{"\n"}
-                    pause
-                  </pre>
-                </section>
-              </div>
-
-              <button 
-                onClick={() => setShowRunGuide(false)}
-                className="w-full py-4 border border-white/10 rounded-2xl hover:bg-white/5 transition-colors font-mono text-[10px] uppercase tracking-widest"
-              >
-                Close Guide
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Footer Status */}
       {/* Error Toast */}
       <AnimatePresence>
@@ -1825,14 +1734,25 @@ export default function App() {
                   {error}
                 </p>
                 {error.includes('Microphone permission') && (
-                  <div className="flex flex-col gap-1 mt-2">
+                  <div className="flex flex-col gap-2 mt-2">
                     <p className="text-white/80 text-xs">If on mobile, check your browser's site settings to allow microphone access.</p>
-                    <button 
-                      onClick={() => { setError(null); startLiveSession(); }}
-                      className="text-xs text-white underline font-bold mt-1"
-                    >
-                      Retry Microphone Access
-                    </button>
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => { setError(null); startLiveSession(); }}
+                        className="text-xs text-white underline font-bold"
+                      >
+                        Retry Access
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const url = window.location.href;
+                          window.open(url, '_blank');
+                        }}
+                        className="text-xs text-cyan-300 underline font-bold"
+                      >
+                        Open in New Tab
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1860,7 +1780,11 @@ export default function App() {
         
         <div className="flex flex-col items-end gap-1">
           <button 
-            onClick={() => { localStorage.removeItem('GEMINI_API_KEY'); window.location.reload(); }}
+            onClick={() => { 
+              localStorage.removeItem('GEMINI_API_KEY'); 
+              setApiKey(null);
+              setShowSetup(true);
+            }}
             className="p-1 hover:bg-white/10 rounded-full transition-colors"
             title="Reset API Key"
           >
